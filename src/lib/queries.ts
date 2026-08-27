@@ -1,6 +1,6 @@
 import "server-only";
 
-import { desc, eq, like, sql } from "drizzle-orm";
+import { and, desc, eq, like, sql } from "drizzle-orm";
 
 import {
   computeOrderBonuses,
@@ -14,28 +14,77 @@ import {
   orderItems,
   orders,
   products,
+  receivedBonuses,
   syncRuns,
   type Order,
   type OrderItem,
   type Product,
+  type ReceivedBonus,
 } from "@/lib/db/schema";
 
 export interface OrderItemWithBonus extends OrderItem {
   bonus: ItemBonusResult;
 }
 
+export interface ReceivedBonusRow extends ReceivedBonus {
+  /** first products.image_urls entry when product_id is set */
+  imageUrl: string | null;
+}
+
 export interface OrderWithItems extends Order {
   items: OrderItemWithBonus[];
   bonuses: OrderBonusResult;
+  /** Manually recorded actuals — take display precedence over predictions. */
+  receivedBonuses: ReceivedBonusRow[];
+  /** Σ quantity of recorded actuals (0 = none recorded). */
+  receivedTotal: number;
+}
+
+function firstImage(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) && typeof arr[0] === "string" ? arr[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One bulk query; grouped in memory (same idiom as the items grouping). */
+function fetchReceivedByOrder(orderId?: string): Map<string, ReceivedBonusRow[]> {
+  const rows = db
+    .select({
+      row: receivedBonuses,
+      productImages: products.imageUrls,
+    })
+    .from(receivedBonuses)
+    .leftJoin(products, eq(products.id, receivedBonuses.productId))
+    .where(orderId ? eq(receivedBonuses.orderId, orderId) : undefined)
+    .orderBy(receivedBonuses.id)
+    .all();
+  const map = new Map<string, ReceivedBonusRow[]>();
+  for (const r of rows) {
+    const entry: ReceivedBonusRow = { ...r.row, imageUrl: firstImage(r.productImages) };
+    const list = map.get(entry.orderId);
+    if (list) list.push(entry);
+    else map.set(entry.orderId, [entry]);
+  }
+  return map;
 }
 
 /** Zip computeOrderBonuses results (parallel by index) onto the item rows. */
-function withBonuses(order: Order, items: OrderItem[]): OrderWithItems {
+function withBonuses(
+  order: Order,
+  items: OrderItem[],
+  received: ReceivedBonusRow[],
+): OrderWithItems {
   const bonuses = computeOrderBonuses(items);
   return {
     ...order,
     items: items.map((item, i) => ({ ...item, bonus: bonuses.items[i] })),
     bonuses,
+    receivedBonuses: received,
+    receivedTotal: received.reduce((n, r) => n + r.quantity, 0),
   };
 }
 
@@ -66,7 +115,10 @@ export function getOrders(q?: string): OrderWithItems[] {
     else byOrder.set(item.orderId, [item]);
   }
 
-  return rows.map((o) => withBonuses(o, byOrder.get(o.id) ?? []));
+  const receivedByOrder = fetchReceivedByOrder();
+  return rows.map((o) =>
+    withBonuses(o, byOrder.get(o.id) ?? [], receivedByOrder.get(o.id) ?? []),
+  );
 }
 
 export interface ProductSummary {
@@ -154,7 +206,8 @@ export function getOrder(id: string): OrderWithItems | null {
     .from(orderItems)
     .where(eq(orderItems.orderId, id))
     .all();
-  return withBonuses(order, items);
+  const received = fetchReceivedByOrder(id).get(id) ?? [];
+  return withBonuses(order, items, received);
 }
 
 export interface ProductDetail {
@@ -237,6 +290,45 @@ export function getProductDetail(id: number): ProductDetail {
   };
 }
 
+export interface CatalogProduct {
+  id: number;
+  name: string;
+  priceYen: number | null;
+  imageUrl: string | null;
+}
+
+/**
+ * Picker source: every live catalog product, newest (highest id) first —
+ * freebies are usually current products.
+ */
+export function getCatalogProducts(q?: string, limit = 1500): CatalogProduct[] {
+  const term = q?.trim();
+  return db
+    .select({
+      id: products.id,
+      name: products.name,
+      priceYen: products.priceYen,
+      imageUrls: products.imageUrls,
+    })
+    .from(products)
+    .where(
+      and(
+        eq(products.fetchStatus, "ok"),
+        sql`${products.name} is not null`,
+        term ? like(products.name, `%${term}%`) : undefined,
+      ),
+    )
+    .orderBy(desc(products.id))
+    .limit(limit)
+    .all()
+    .map((r) => ({
+      id: r.id,
+      name: r.name ?? "",
+      priceYen: r.priceYen,
+      imageUrl: firstImage(r.imageUrls),
+    }));
+}
+
 export function getStats() {
   const row = db
     .select({
@@ -269,8 +361,26 @@ export function getLastSync() {
     db
       .select()
       .from(syncRuns)
-      .where(eq(syncRuns.status, "success"))
+      .where(and(eq(syncRuns.status, "success"), eq(syncRuns.kind, "orders")))
       .orderBy(desc(syncRuns.id))
       .get() ?? null
   );
+}
+
+/** Latest catalog sweep (any terminal status) + current catalog size. */
+export function getCatalogState() {
+  const lastRun =
+    db
+      .select()
+      .from(syncRuns)
+      .where(and(eq(syncRuns.kind, "catalog"), eq(syncRuns.status, "success")))
+      .orderBy(desc(syncRuns.id))
+      .get() ?? null;
+  const count =
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(products)
+      .where(sql`${products.fetchStatus} = 'ok' and ${products.name} is not null`)
+      .get()?.n ?? 0;
+  return { count, lastSweptAt: lastRun?.finishedAt ?? null };
 }

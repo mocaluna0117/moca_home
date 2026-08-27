@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   computeOrderBonuses,
+  draftReceivedBonuses,
   parseBonusRule,
   parseBonusRules,
 } from "./bonus";
@@ -261,5 +262,82 @@ describe("computeOrderBonuses — 実注文フィクスチャ", () => {
     assert.equal(res.totalBonusCount, 0);
     assert.equal(res.items[0].activated, false);
     assert.equal(res.items[0].hint, null);
+  });
+});
+
+describe("draftReceivedBonuses — 予測→下書き", () => {
+  const compute = computeOrderBonuses;
+  const draft = draftReceivedBonuses;
+
+  it("9915: 単独発動プール2つ → 商品つき下書き2行", () => {
+    const items = [
+      {
+        productName:
+          "ペロリ♪合計3コご注文で＋1コプレゼント♡30種ふりかけと合わせてもOK！",
+        productId: 320,
+      },
+      {
+        productName:
+          "『美容ふりかけ素♡』2コご注文で＋1コプレゼント♡(10兆個ふりかけと合わせてもOK！)",
+        productId: 505,
+      },
+    ];
+    const rows = draft(
+      items,
+      compute(items.map((i) => ({ productName: i.productName, quantity: i.productId === 320 ? 3 : 2 }))),
+    );
+    assert.equal(rows.length, 2);
+    assert.deepEqual(
+      rows.map((r) => [r.productId, r.quantity, r.source]),
+      [
+        [320, 1, "pool"],
+        [505, 1, "pool"],
+      ],
+    );
+  });
+
+  it("Bギフトはラベルのみ(productIdなし)の下書きになる", () => {
+    const items = [
+      {
+        productName:
+          "どのミートローフでも3セットご注文で手作りご飯(2040円)1セットプレゼント！",
+        productId: 511,
+      },
+    ];
+    const rows = draft(
+      items,
+      compute([{ productName: items[0].productName, quantity: 3 }]),
+    );
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0], {
+      productId: null,
+      label: "手作りご飯",
+      quantity: 1,
+      source: "gift",
+    });
+  });
+
+  it("C同梱は商品自身の下書きになる(数量=同梱数×購入数)", () => {
+    const items = [
+      { productName: "本日限定！ペロリ♪3コ＋おまけ1コのお得セット♡", productId: 700 },
+    ];
+    const rows = draft(
+      items,
+      compute([{ productName: items[0].productName, quantity: 2 }]),
+    );
+    assert.deepEqual(rows, [
+      { productId: 700, label: items[0].productName, quantity: 2, source: "included" },
+    ]);
+  });
+
+  it("未発動の予測は下書きに含めない", () => {
+    const items = [
+      { productName: "ペロリ♪3コご注文で＋1コのプレゼント♡", productId: 1 },
+    ];
+    const rows = draft(
+      items,
+      compute([{ productName: items[0].productName, quantity: 2 }]),
+    );
+    assert.equal(rows.length, 0);
   });
 });

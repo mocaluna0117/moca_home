@@ -1,12 +1,45 @@
 /**
  * CLI entry for the scraper.
- *   npm run sync                 # full sync
+ *   npm run sync                 # full order sync
  *   npm run sync -- --login-only # verify credentials + pagination only
+ *   npm run sync -- --catalog    # catalog ID sweep (first run ~30 min)
  */
+import { runCatalogSync } from "@/lib/scraper/catalog";
+import { failActiveRuns } from "@/lib/scraper/runs";
 import { probeLogin, runSync, type SyncProgress } from "@/lib/scraper/sync";
+
+// Ctrl-C mid-run: close the sync_runs row so a rerun starts immediately
+// (already-persisted rows are skipped — the sweep self-heals).
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    try {
+      failActiveRuns("中断されました（Ctrl-C）");
+    } finally {
+      process.exit(130);
+    }
+  });
+}
 
 async function main() {
   const loginOnly = process.argv.includes("--login-only");
+  const catalog = process.argv.includes("--catalog");
+
+  if (catalog) {
+    let lastLine = "";
+    const s = await runCatalogSync((p) => {
+      if (p.phase === "login") return console.log("ログイン中…");
+      if (p.phase !== "catalog") return;
+      const line = `カタログ探索 ${p.probed}/${p.estimatedTotal} (id=${p.currentId} / 発見 ${p.found} / 404 ${p.notFound}${p.errors ? ` / エラー ${p.errors}` : ""})`;
+      if (line === lastLine) return;
+      lastLine = line;
+      console.log(line);
+    });
+    console.log(
+      `完了: probed=${s.probed} ok=${s.productsOk} 404=${s.productsNotFound} ` +
+        `error=${s.productsError} max_live_id=${s.maxLiveId} stopped_at=${s.stoppedAtId}`,
+    );
+    return;
+  }
 
   if (loginOnly) {
     const info = await probeLogin();

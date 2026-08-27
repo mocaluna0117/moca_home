@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { SyncButton } from "@/components/sync-button";
 import { Toaster } from "@/components/ui/sonner";
-import { getLastSync, getStats } from "@/lib/queries";
+import { getCatalogState, getLastSync, getStats } from "@/lib/queries";
 import { formatSyncedAt } from "@/lib/format";
 import "./globals.css";
 
@@ -15,6 +15,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   const lastSync = getLastSync();
   const stats = getStats();
+  const catalogState = getCatalogState();
 
   return (
     <html lang="ja" className="h-full antialiased">
@@ -27,7 +28,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <span className="text-xs text-muted-foreground tabular-nums">
               最終同期: {formatSyncedAt(lastSync?.finishedAt)}
             </span>
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-1.5">
+              <SyncButton
+                mode="catalog"
+                hasData={catalogState.lastSweptAt !== null}
+              />
               <SyncButton hasData={stats.orderCount > 0} />
             </div>
           </div>

@@ -3,7 +3,7 @@ import "server-only";
 import { eq, inArray, isNull } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { orderItems, orders, products, syncRuns } from "@/lib/db/schema";
+import { orderItems, orders, products } from "@/lib/db/schema";
 
 import {
   HttpClient,
@@ -15,6 +15,17 @@ import {
 import { login, withSession } from "./login";
 import { fetchOrderDetail, fetchOrderListPage } from "./orders";
 import { fetchProduct } from "./products";
+import {
+  SyncBusyError,
+  assertNoActiveRun,
+  beginRun,
+  completeRun,
+  failRun,
+  heartbeat,
+  setRunTotal,
+} from "./runs";
+
+export { SyncBusyError };
 
 export type SyncProgress =
   | { phase: "login" }
@@ -32,35 +43,7 @@ export interface SyncSummary {
   productsError: number;
 }
 
-export class SyncBusyError extends ScraperError {}
-
 const now = () => new Date().toISOString();
-
-/** A run older than this is treated as crashed, not active. */
-const STALE_RUN_MS = 10 * 60 * 1000;
-
-function assertNoActiveRun() {
-  const running = db
-    .select()
-    .from(syncRuns)
-    .where(eq(syncRuns.status, "running"))
-    .all();
-  for (const run of running) {
-    const age = Date.now() - new Date(run.startedAt).getTime();
-    if (Number.isFinite(age) && age < STALE_RUN_MS) {
-      throw new SyncBusyError("同期が既に実行中です");
-    }
-    // Crashed run — close it out so it stops blocking.
-    db.update(syncRuns)
-      .set({
-        status: "error",
-        finishedAt: now(),
-        errorMessage: "中断されました（タイムアウト）",
-      })
-      .where(eq(syncRuns.id, run.id))
-      .run();
-  }
-}
 
 export async function runSync(
   onProgress?: (p: SyncProgress) => void,
@@ -68,11 +51,7 @@ export async function runSync(
   const config = loadConfig();
   assertNoActiveRun();
 
-  const run = db
-    .insert(syncRuns)
-    .values({ startedAt: now(), status: "running" })
-    .returning()
-    .get();
+  const run = beginRun("orders");
 
   const summary: SyncSummary = {
     totalOrders: 0,
@@ -94,10 +73,7 @@ export async function runSync(
       fetchOrderListPage(client, 1),
     );
     const lastPage = first.lastPage;
-    db.update(syncRuns)
-      .set({ totalOrders: first.totalCount ?? null })
-      .where(eq(syncRuns.id, run.id))
-      .run();
+    setRunTotal(run.id, first.totalCount ?? null);
     onProgress?.({ phase: "list", page: 1, lastPage });
 
     const listed = new Map<string, (typeof first.orders)[number]>();
@@ -211,10 +187,7 @@ export async function runSync(
       });
 
       summary.ordersDetailed++;
-      db.update(syncRuns)
-        .set({ ordersProcessed: summary.ordersDetailed })
-        .where(eq(syncRuns.id, run.id))
-        .run();
+      heartbeat(run.id, summary.ordersDetailed);
       onProgress?.({ phase: "orders", done: index + 1, total });
     }
 
@@ -259,6 +232,7 @@ export async function runSync(
         if (gone) summary.productsNotFound++;
         else summary.productsError++;
       }
+      heartbeat(run.id, summary.ordersDetailed);
       onProgress?.({
         phase: "products",
         done: index + 1,
@@ -266,15 +240,10 @@ export async function runSync(
       });
     }
 
-    db.update(syncRuns)
-      .set({
-        status: "success",
-        finishedAt: now(),
-        totalOrders: summary.totalOrders,
-        ordersProcessed: summary.ordersDetailed,
-      })
-      .where(eq(syncRuns.id, run.id))
-      .run();
+    completeRun(run.id, {
+      total: summary.totalOrders,
+      processed: summary.ordersDetailed,
+    });
 
     onProgress?.({ phase: "done", summary });
     return summary;
@@ -285,10 +254,7 @@ export async function runSync(
         : err instanceof Error
           ? err.message
           : String(err);
-    db.update(syncRuns)
-      .set({ status: "error", finishedAt: now(), errorMessage: message })
-      .where(eq(syncRuns.id, run.id))
-      .run();
+    failRun(run.id, message);
     throw err;
   }
 }

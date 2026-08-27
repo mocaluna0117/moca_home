@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { PackageSearch, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -12,6 +12,13 @@ type Progress =
   | { phase: "list"; page: number; lastPage: number }
   | { phase: "orders"; done: number; total: number }
   | { phase: "products"; done: number; total: number }
+  | {
+      phase: "catalog";
+      probed: number;
+      estimatedTotal: number;
+      currentId: number;
+      found: number;
+    }
   | { phase: "done" }
   | {
       phase: "result";
@@ -19,11 +26,11 @@ type Progress =
       busy?: boolean;
       error?: string;
       summary?: {
-        totalOrders: number;
-        ordersInserted: number;
-        ordersDetailed: number;
-        productsOk: number;
-        productsNotFound: number;
+        totalOrders?: number;
+        ordersInserted?: number;
+        ordersDetailed?: number;
+        productsOk?: number;
+        productsNotFound?: number;
       };
     };
 
@@ -38,28 +45,44 @@ function label(p: Progress | null) {
       return `注文 ${p.done}/${p.total}`;
     case "products":
       return `商品 ${p.done}/${p.total}`;
+    case "catalog":
+      return `ID ${p.currentId} / +${p.found}`;
     default:
       return "仕上げ中…";
   }
 }
 
-export function SyncButton({ hasData }: { hasData: boolean }) {
+export function SyncButton({
+  hasData,
+  mode = "orders",
+}: {
+  hasData: boolean;
+  mode?: "orders" | "catalog";
+}) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [, startTransition] = useTransition();
+  const isCatalog = mode === "catalog";
 
   async function handleClick() {
     setRunning(true);
     setProgress(null);
     if (!hasData) {
-      toast.info("初回同期を開始しました", {
-        description: "全件取得のため2〜3分かかります。",
-      });
+      toast.info(
+        isCatalog ? "カタログ同期を開始しました" : "初回同期を開始しました",
+        {
+          description: isCatalog
+            ? "全商品IDを走査するため初回は30分ほどかかります。タブは開いたままにしてください。`npm run sync -- --catalog` でも実行できます。"
+            : "全件取得のため2〜3分かかります。",
+        },
+      );
     }
 
     try {
-      const res = await fetch("/api/sync", { method: "POST" });
+      const res = await fetch(isCatalog ? "/api/sync/catalog" : "/api/sync", {
+        method: "POST",
+      });
       if (!res.body) throw new Error("応答が空です");
 
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -88,10 +111,15 @@ export function SyncButton({ hasData }: { hasData: boolean }) {
       if (result && result.phase === "result") {
         if (result.ok) {
           const s = result.summary;
-          toast.success("同期完了", {
+          toast.success(isCatalog ? "カタログ同期完了" : "同期完了", {
             description: s
-              ? `注文 ${s.totalOrders}件（新規 ${s.ordersInserted}件）/ 商品 ${s.productsOk}件` +
-                (s.productsNotFound ? ` / 販売終了 ${s.productsNotFound}件` : "")
+              ? isCatalog
+                ? `商品 ${s.productsOk ?? 0}件を新規取得` +
+                  ((s.productsNotFound ?? 0) > 0
+                    ? ` / 欠番 ${s.productsNotFound}件`
+                    : "")
+                : `注文 ${s.totalOrders}件（新規 ${s.ordersInserted}件）/ 商品 ${s.productsOk}件` +
+                  (s.productsNotFound ? ` / 販売終了 ${s.productsNotFound}件` : "")
               : undefined,
           });
           startTransition(() => router.refresh());
@@ -117,12 +145,16 @@ export function SyncButton({ hasData }: { hasData: boolean }) {
     <Button
       onClick={handleClick}
       disabled={running}
-      variant={hasData ? "outline" : "default"}
+      variant={isCatalog ? "ghost" : hasData ? "outline" : "default"}
       size="sm"
       className="min-w-[8.5rem] tabular-nums"
     >
-      <RefreshCw className={running ? "animate-spin" : undefined} />
-      {running ? label(progress) : "同期"}
+      {isCatalog ? (
+        <PackageSearch className={running ? "animate-pulse" : undefined} />
+      ) : (
+        <RefreshCw className={running ? "animate-spin" : undefined} />
+      )}
+      {running ? label(progress) : isCatalog ? "カタログ同期" : "同期"}
     </Button>
   );
 }

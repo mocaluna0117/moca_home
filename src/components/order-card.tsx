@@ -30,11 +30,19 @@ export function OrderCard({ order }: { order: OrderWithItems }) {
             注文番号 {order.id}
           </span>
           <StatusBadge status={order.status} />
-          {(order.bonuses.totalBonusCount > 0 || order.bonuses.gifts.length > 0) && (
+          {order.receivedTotal > 0 ? (
             <Badge variant="secondary" className="shrink-0 font-normal">
               <Gift aria-hidden="true" />
-              {formatBonusSummary(order.bonuses)}
+              届いたおまけ {order.receivedTotal}点
             </Badge>
+          ) : (
+            (order.bonuses.totalBonusCount > 0 ||
+              order.bonuses.gifts.length > 0) && (
+              <Badge variant="secondary" className="shrink-0 font-normal">
+                <Gift aria-hidden="true" />
+                {formatBonusSummary(order.bonuses)}
+              </Badge>
+            )
           )}
           <div className="ml-auto text-right">
             <div className="font-semibold tabular-nums">
@@ -81,7 +89,7 @@ export function OrderCard({ order }: { order: OrderWithItems }) {
             </li>
           ))}
         </ul>
-        {order.bonuses.pools
+        {order.receivedTotal === 0 && order.bonuses.pools
           .filter(
             (p) =>
               p.activated &&

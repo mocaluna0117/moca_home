@@ -595,3 +595,74 @@ export function computeOrderBonuses(items: BonusItemInput[]): OrderBonusResult {
 
   return { items: results, pools: poolResults, totalBonusCount, gifts };
 }
+
+// -------------------------------------------------- received-bonus drafting
+
+export interface ReceivedBonusDraft {
+  productId: number | null;
+  label: string;
+  quantity: number;
+  source: "pool" | "gift" | "included";
+}
+
+/**
+ * Maps an order's PREDICTED bonuses onto draft rows for the manual
+ * 「届いたおまけ」 form (the 予測を取り込む button). Same parallel-array
+ * convention as computeOrderBonuses; `items` must be the array that
+ * produced `bonuses`.
+ *
+ * - Activated A pools → one row per pool; the product is the first member
+ *   with a productId (which member the shop actually ships is ambiguous for
+ *   multi-member pools — a deliberate under-commitment the user edits).
+ * - gifts (B gifts + compound extras) → label-only rows. Deliberately NO
+ *   catalog matching: 手作りご飯-style labels match many catalog rows and
+ *   the delivered flavor is unknowable — a wrong prefill is worse than a
+ *   blank picker.
+ * - C included → the product itself.
+ */
+export function draftReceivedBonuses(
+  items: ReadonlyArray<{ productName: string; productId?: number | null }>,
+  bonuses: OrderBonusResult,
+): ReceivedBonusDraft[] {
+  const drafts: ReceivedBonusDraft[] = [];
+
+  for (const pool of bonuses.pools) {
+    if (!pool.activated || pool.ruleKind !== "same-plus" || pool.bonusCount <= 0) {
+      continue;
+    }
+    const memberIndex =
+      pool.memberIndexes.find((i) => items[i]?.productId != null) ??
+      pool.memberIndexes[0];
+    const member = memberIndex !== undefined ? items[memberIndex] : undefined;
+    if (!member) continue;
+    drafts.push({
+      productId: member.productId ?? null,
+      label: member.productName,
+      quantity: pool.bonusCount,
+      source: "pool",
+    });
+  }
+
+  for (const gift of bonuses.gifts) {
+    drafts.push({
+      productId: null,
+      label: gift.label,
+      quantity: gift.count,
+      source: "gift",
+    });
+  }
+
+  bonuses.items.forEach((r, i) => {
+    if (r.includedBonusCount <= 0) return;
+    const item = items[i];
+    if (!item) return;
+    drafts.push({
+      productId: item.productId ?? null,
+      label: item.productName,
+      quantity: r.includedBonusCount,
+      source: "included",
+    });
+  });
+
+  return drafts;
+}

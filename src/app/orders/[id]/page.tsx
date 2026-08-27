@@ -8,6 +8,7 @@ import {
   formatRuleShort,
 } from "@/components/bonus-badge";
 import { ImageWithFallback } from "@/components/image-with-fallback";
+import { ReceivedBonusSection } from "@/components/received-bonus-section";
 import { StatusBadge } from "@/components/status-badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -18,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getOrder } from "@/lib/queries";
+import { getCatalogState, getOrder } from "@/lib/queries";
 import { formatDateTime, formatYen } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,10 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
   if (!order) notFound();
 
   const itemTotal = order.items.reduce((n, i) => n + i.quantity, 0);
+  const hasActuals = order.receivedTotal > 0 || order.receivedBonuses.length > 0;
+  const catalogState = getCatalogState();
+  const hasPrediction =
+    order.bonuses.totalBonusCount > 0 || order.bonuses.gifts.length > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -124,7 +129,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                   </TableCell>
                 </TableRow>
               ))}
-              {order.bonuses.gifts.map((g, i) => (
+              {!hasActuals && order.bonuses.gifts.map((g, i) => (
                 <TableRow key={`gift-${i}`} className="text-muted-foreground">
                   <TableCell>
                     <div className="flex size-12 items-center justify-center rounded border bg-muted">
@@ -150,23 +155,44 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
         </p>
       </section>
 
+      <ReceivedBonusSection order={order} catalogSynced={catalogState.count > 100} />
+
       <section className="flex justify-end">
         <dl className="w-full max-w-xs space-y-1.5 text-sm">
           <Row label="小計" value={formatYen(order.subtotalYen)} />
           <Row label="手数料" value={formatYen(order.feeYen)} />
           <Row label="送料" value={formatYen(order.shippingFeeYen)} />
-          {(order.bonuses.totalBonusCount > 0 ||
-            order.bonuses.gifts.length > 0) && (
-            <div className="flex items-baseline justify-between">
-              <dt className="text-muted-foreground">特典</dt>
-              <dd className="inline-flex items-center gap-1 tabular-nums">
-                <Gift
-                  className="size-3.5 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                {formatBonusSummary(order.bonuses)}
-              </dd>
-            </div>
+          {hasActuals ? (
+            <>
+              <div className="flex items-baseline justify-between">
+                <dt className="text-muted-foreground">届いたおまけ</dt>
+                <dd className="inline-flex items-center gap-1 tabular-nums">
+                  <Gift
+                    className="size-3.5 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  {order.receivedTotal}点
+                </dd>
+              </div>
+              {hasPrediction && (
+                <p className="text-right text-xs text-muted-foreground">
+                  予測: {formatBonusSummary(order.bonuses)}
+                </p>
+              )}
+            </>
+          ) : (
+            hasPrediction && (
+              <div className="flex items-baseline justify-between">
+                <dt className="text-muted-foreground">特典（予測）</dt>
+                <dd className="inline-flex items-center gap-1 tabular-nums">
+                  <Gift
+                    className="size-3.5 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  {formatBonusSummary(order.bonuses)}
+                </dd>
+              </div>
+            )
           )}
           <Separator className="my-2" />
           <div className="flex items-baseline justify-between">
