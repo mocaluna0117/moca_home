@@ -1,7 +1,11 @@
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Gift } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import {
+  formatHistoryBonus,
+  formatRuleLong,
+} from "@/components/bonus-badge";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -13,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { parseBonusRule } from "@/lib/bonus";
 import { getProductDetail } from "@/lib/queries";
 import { formatDate, formatYen, parseJsonArray } from "@/lib/format";
 
@@ -40,6 +45,7 @@ export default async function ProductPage({
   const heroImage = images[0] ?? snapshot?.imageUrl ?? null;
   const tags = isGone ? [] : parseJsonArray(product?.tags);
 
+  const bonusRule = parseBonusRule(name);
   const totalQuantity = history.reduce((n, h) => n + h.quantity, 0);
   const totalSpent = history.reduce((n, h) => n + h.unitPriceYen * h.quantity, 0);
 
@@ -72,6 +78,20 @@ export default async function ProductPage({
               税込
             </span>
           </p>
+
+          {bonusRule && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="secondary" className="font-normal">
+                <Gift aria-hidden="true" />
+                {formatRuleLong(bonusRule)}
+              </Badge>
+              {bonusRule.scope && (
+                <span className="text-xs text-muted-foreground">
+                  ※ {bonusRule.scope.family}シリーズと同一注文内で合算OK
+                </span>
+              )}
+            </div>
+          )}
 
           {isGone && (
             <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
@@ -142,6 +162,7 @@ export default async function ProductPage({
                 <TableHead>状況</TableHead>
                 <TableHead className="text-right">単価</TableHead>
                 <TableHead className="text-right">数量</TableHead>
+                <TableHead className="text-right">特典</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -159,6 +180,9 @@ export default async function ProductPage({
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {h.quantity}
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
+                    {formatHistoryBonus(h.bonus)}
                   </TableCell>
                 </TableRow>
               ))}

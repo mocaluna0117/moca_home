@@ -2,6 +2,13 @@ import "server-only";
 
 import { desc, eq, like, sql } from "drizzle-orm";
 
+import {
+  computeOrderBonuses,
+  parseBonusRule,
+  type BonusRule,
+  type ItemBonusResult,
+  type OrderBonusResult,
+} from "@/lib/bonus";
 import { db } from "@/lib/db";
 import {
   orderItems,
@@ -13,8 +20,23 @@ import {
   type Product,
 } from "@/lib/db/schema";
 
+export interface OrderItemWithBonus extends OrderItem {
+  bonus: ItemBonusResult;
+}
+
 export interface OrderWithItems extends Order {
-  items: OrderItem[];
+  items: OrderItemWithBonus[];
+  bonuses: OrderBonusResult;
+}
+
+/** Zip computeOrderBonuses results (parallel by index) onto the item rows. */
+function withBonuses(order: Order, items: OrderItem[]): OrderWithItems {
+  const bonuses = computeOrderBonuses(items);
+  return {
+    ...order,
+    items: items.map((item, i) => ({ ...item, bonus: bonuses.items[i] })),
+    bonuses,
+  };
 }
 
 /** Orders newest-first; `q` filters by product name within the order. */
@@ -44,7 +66,7 @@ export function getOrders(q?: string): OrderWithItems[] {
     else byOrder.set(item.orderId, [item]);
   }
 
-  return rows.map((o) => ({ ...o, items: byOrder.get(o.id) ?? [] }));
+  return rows.map((o) => withBonuses(o, byOrder.get(o.id) ?? []));
 }
 
 export interface ProductSummary {
@@ -58,6 +80,7 @@ export interface ProductSummary {
   totalQuantity: number;
   lastOrderedAt: string;
   fetchStatus: Product["fetchStatus"] | null;
+  bonusRule: BonusRule | null;
 }
 
 /**
@@ -109,6 +132,7 @@ export function getProductSummaries(q?: string): ProductSummary[] {
       totalQuantity: r.quantity,
       lastOrderedAt: r.orderedAt,
       fetchStatus: r.productFetchStatus ?? null,
+      bonusRule: parseBonusRule(r.productName),
       orderIds: new Set([r.orderId]),
     });
   }
@@ -130,7 +154,7 @@ export function getOrder(id: string): OrderWithItems | null {
     .from(orderItems)
     .where(eq(orderItems.orderId, id))
     .all();
-  return { ...order, items };
+  return withBonuses(order, items);
 }
 
 export interface ProductDetail {
@@ -147,6 +171,7 @@ export interface ProductDetail {
     status: string;
     unitPriceYen: number;
     quantity: number;
+    bonus: ItemBonusResult | null;
   }>;
 }
 
@@ -171,6 +196,27 @@ export function getProductDetail(id: number): ProductDetail {
 
   const newest = history[0];
 
+  // Activation depends on each order's FULL item set (pooling), so pull the
+  // sibling items of every order in the history and compute per order.
+  const historyOrderIds = new Set(history.map((h) => h.orderId));
+  const siblingItems = db
+    .select()
+    .from(orderItems)
+    .all()
+    .filter((i) => historyOrderIds.has(i.orderId));
+  const itemsByOrder = new Map<string, OrderItem[]>();
+  for (const item of siblingItems) {
+    const list = itemsByOrder.get(item.orderId);
+    if (list) list.push(item);
+    else itemsByOrder.set(item.orderId, [item]);
+  }
+  const bonusForOrder = new Map<string, ItemBonusResult | null>();
+  for (const [orderId, items] of itemsByOrder) {
+    const result = computeOrderBonuses(items);
+    const idx = items.findIndex((i) => i.productId === id);
+    bonusForOrder.set(orderId, idx >= 0 ? result.items[idx] : null);
+  }
+
   return {
     product,
     snapshot: newest
@@ -186,6 +232,7 @@ export function getProductDetail(id: number): ProductDetail {
       status: h.status,
       unitPriceYen: h.unitPriceYen,
       quantity: h.quantity,
+      bonus: bonusForOrder.get(h.orderId) ?? null,
     })),
   };
 }

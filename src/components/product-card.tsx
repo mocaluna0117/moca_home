@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { formatRuleShort } from "@/components/bonus-badge";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,6 +24,14 @@ export function ProductCard({ product }: { product: ProductSummary }) {
             className="absolute top-2 left-2 bg-background/90 font-normal"
           >
             販売終了
+          </Badge>
+        )}
+        {product.bonusRule && (
+          <Badge
+            variant="outline"
+            className="absolute top-2 right-2 max-w-[calc(100%-1rem)] bg-background/90 font-normal"
+          >
+            {formatRuleShort(product.bonusRule)}
           </Badge>
         )}
       </div>

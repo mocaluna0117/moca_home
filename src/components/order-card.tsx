@@ -1,6 +1,9 @@
+import { Gift } from "lucide-react";
 import Link from "next/link";
 
+import { BonusBadge, formatBonusSummary } from "@/components/bonus-badge";
 import { ImageWithFallback } from "@/components/image-with-fallback";
+import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import type { OrderWithItems } from "@/lib/queries";
@@ -27,6 +30,12 @@ export function OrderCard({ order }: { order: OrderWithItems }) {
             注文番号 {order.id}
           </span>
           <StatusBadge status={order.status} />
+          {(order.bonuses.totalBonusCount > 0 || order.bonuses.gifts.length > 0) && (
+            <Badge variant="secondary" className="shrink-0 font-normal">
+              <Gift aria-hidden="true" />
+              {formatBonusSummary(order.bonuses)}
+            </Badge>
+          )}
           <div className="ml-auto text-right">
             <div className="font-semibold tabular-nums">
               {formatYen(order.totalYen)}
@@ -62,13 +71,33 @@ export function OrderCard({ order }: { order: OrderWithItems }) {
                     {item.productName}
                   </p>
                 )}
-                <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
                   {formatYen(item.unitPriceYen)} × {item.quantity}
+                  {item.bonus.activated && !item.bonus.pooled && (
+                    <BonusBadge item={item.bonus} />
+                  )}
                 </p>
               </div>
             </li>
           ))}
         </ul>
+        {order.bonuses.pools
+          .filter(
+            (p) =>
+              p.activated &&
+              p.memberIndexes.length + p.contributorIndexes.length > 1,
+          )
+          .map((p) => (
+            <p
+              key={p.poolKey}
+              className="mt-2 text-xs text-muted-foreground tabular-nums"
+            >
+              {p.family ?? "合算"}合算 {p.totalQuantity}コ →{" "}
+              {p.ruleKind === "gift"
+                ? `${p.giftLabel}プレゼント`
+                : `おまけ +${p.bonusCount}コ`}
+            </p>
+          ))}
         {hidden > 0 && (
           <Link
             href={`/orders/${order.id}`}

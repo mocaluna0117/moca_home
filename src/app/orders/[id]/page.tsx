@@ -1,7 +1,12 @@
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Gift } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import {
+  BonusBadge,
+  formatBonusSummary,
+  formatRuleShort,
+} from "@/components/bonus-badge";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { StatusBadge } from "@/components/status-badge";
 import { Separator } from "@/components/ui/separator";
@@ -84,6 +89,29 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                         {item.productName}
                       </span>
                     )}
+                    {item.bonus.activated && !item.bonus.pooled && (
+                      <div className="mt-1">
+                        <BonusBadge item={item.bonus} />
+                      </div>
+                    )}
+                    {item.bonus.activated && item.bonus.pooled && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        合算特典対象（{item.bonus.poolFamily ?? "合算"}）
+                      </p>
+                    )}
+                    {item.bonus.rule &&
+                      item.bonus.rule.kind !== "included" &&
+                      !item.bonus.activated && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          特典 {formatRuleShort(item.bonus.rule)}
+                          （この注文では未適用）
+                        </p>
+                      )}
+                    {item.bonus.hint === "maybe-poolable" && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        合算対象の可能性あり
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatYen(item.unitPriceYen)}
@@ -94,6 +122,24 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                   <TableCell className="text-right tabular-nums">
                     {formatYen(item.unitPriceYen * item.quantity)}
                   </TableCell>
+                </TableRow>
+              ))}
+              {order.bonuses.gifts.map((g, i) => (
+                <TableRow key={`gift-${i}`} className="text-muted-foreground">
+                  <TableCell>
+                    <div className="flex size-12 items-center justify-center rounded border bg-muted">
+                      <Gift className="size-4" aria-hidden="true" />
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-md text-sm leading-snug whitespace-normal">
+                    {g.label}（プレゼント）
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">—</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {g.count}
+                    {g.unit ?? ""}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">—</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -109,6 +155,19 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
           <Row label="小計" value={formatYen(order.subtotalYen)} />
           <Row label="手数料" value={formatYen(order.feeYen)} />
           <Row label="送料" value={formatYen(order.shippingFeeYen)} />
+          {(order.bonuses.totalBonusCount > 0 ||
+            order.bonuses.gifts.length > 0) && (
+            <div className="flex items-baseline justify-between">
+              <dt className="text-muted-foreground">特典</dt>
+              <dd className="inline-flex items-center gap-1 tabular-nums">
+                <Gift
+                  className="size-3.5 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                {formatBonusSummary(order.bonuses)}
+              </dd>
+            </div>
+          )}
           <Separator className="my-2" />
           <div className="flex items-baseline justify-between">
             <dt className="font-medium">合計</dt>
