@@ -17,15 +17,22 @@ export function OrderCard({ order }: { order: OrderWithItems }) {
   const itemTotal = order.items.reduce((n, i) => n + i.quantity, 0);
 
   return (
-    <Card className="transition-colors hover:border-foreground/20">
+    // Stretched-link pattern: one overlay link makes the whole card open the
+    // order, while the product links inside stay clickable via z-10 (nesting
+    // real <a>s would be invalid HTML).
+    <Card className="relative cursor-pointer transition-colors hover:border-foreground/20 hover:bg-muted/30 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring">
+      <Link
+        href={`/orders/${order.id}`}
+        aria-label={`注文 ${order.id}（${formatDate(order.orderedAt)}）の詳細`}
+        // z-10 clears the positioned thumbnail wrappers; the few elements that
+        // must stay interactive sit at z-20.
+        className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none"
+      />
       <CardHeader className="gap-2 pb-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <Link
-            href={`/orders/${order.id}`}
-            className="font-medium tabular-nums hover:underline"
-          >
+          <span className="font-medium tabular-nums">
             {formatDate(order.orderedAt)}
-          </Link>
+          </span>
           <span className="text-xs text-muted-foreground tabular-nums">
             注文番号 {order.id}
           </span>
@@ -70,7 +77,7 @@ export function OrderCard({ order }: { order: OrderWithItems }) {
                 {item.productId !== null ? (
                   <Link
                     href={`/products/${item.productId}`}
-                    className="line-clamp-2 text-sm leading-snug hover:underline"
+                    className="relative z-20 line-clamp-2 text-sm leading-snug hover:underline"
                   >
                     {item.productName}
                   </Link>
@@ -82,7 +89,11 @@ export function OrderCard({ order }: { order: OrderWithItems }) {
                 <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
                   {formatYen(item.unitPriceYen)} × {item.quantity}
                   {item.bonus.activated && !item.bonus.pooled && (
-                    <BonusBadge item={item.bonus} />
+                    // z-20 keeps the badge's title tooltip reachable above the
+                    // card-wide link.
+                    <span className="relative z-20 inline-flex">
+                      <BonusBadge item={item.bonus} />
+                    </span>
                   )}
                 </p>
               </div>
@@ -107,12 +118,10 @@ export function OrderCard({ order }: { order: OrderWithItems }) {
             </p>
           ))}
         {hidden > 0 && (
-          <Link
-            href={`/orders/${order.id}`}
-            className="mt-3 inline-block text-xs text-muted-foreground hover:underline"
-          >
+          // Plain text now — the whole card already opens the order.
+          <p className="mt-3 text-xs text-muted-foreground">
             他 {hidden} 点を表示
-          </Link>
+          </p>
         )}
       </CardContent>
     </Card>
