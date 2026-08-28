@@ -4,7 +4,12 @@ import { PackageOpen, SearchX } from "lucide-react";
 import { OrderCard } from "@/components/order-card";
 import { ProductCard } from "@/components/product-card";
 import { SearchInput } from "@/components/search-input";
-import { getOrders, getProductSummaries, getStats } from "@/lib/queries";
+import {
+  getCatalogState,
+  getOrders,
+  getProductSummaries,
+  getStats,
+} from "@/lib/queries";
 import { formatYen } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +42,7 @@ export default async function HomePage({
   }
 
   const orders = view === "orders" ? getOrders(q) : [];
+  const catalogSynced = getCatalogState().count > 100;
   const productSummaries = view === "products" ? getProductSummaries(q) : [];
   const isEmptyResult =
     view === "orders" ? orders.length === 0 : productSummaries.length === 0;
@@ -98,7 +104,11 @@ export default async function HomePage({
           </p>
           <div className="flex flex-col gap-4">
             {orders.map((order) => (
-              <OrderCard key={order.id} order={order} />
+              <OrderCard
+                key={order.id}
+                order={order}
+                catalogSynced={catalogSynced}
+              />
             ))}
           </div>
         </>

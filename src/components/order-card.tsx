@@ -3,18 +3,27 @@ import Link from "next/link";
 
 import { BonusBadge, formatBonusSummary } from "@/components/bonus-badge";
 import { ImageWithFallback } from "@/components/image-with-fallback";
+import { ReceivedBonusDialog } from "@/components/received-bonus-dialog";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import type { OrderWithItems } from "@/lib/queries";
 import { formatDate, formatYen } from "@/lib/format";
+import { buildReceivedDrafts } from "@/lib/received-draft";
 
 const MAX_VISIBLE_ITEMS = 4;
 
-export function OrderCard({ order }: { order: OrderWithItems }) {
+export function OrderCard({
+  order,
+  catalogSynced,
+}: {
+  order: OrderWithItems;
+  catalogSynced: boolean;
+}) {
   const visible = order.items.slice(0, MAX_VISIBLE_ITEMS);
   const hidden = order.items.length - visible.length;
   const itemTotal = order.items.reduce((n, i) => n + i.quantity, 0);
+  const { existing, predicted } = buildReceivedDrafts(order);
 
   return (
     // Stretched-link pattern: one overlay link makes the whole card open the
@@ -117,12 +126,25 @@ export function OrderCard({ order }: { order: OrderWithItems }) {
                 : `おまけ +${p.bonusCount}コ`}
             </p>
           ))}
-        {hidden > 0 && (
-          // Plain text now — the whole card already opens the order.
-          <p className="mt-3 text-xs text-muted-foreground">
-            他 {hidden} 点を表示
-          </p>
-        )}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          {hidden > 0 ? (
+            // Plain text — the whole card already opens the order.
+            <p className="text-xs text-muted-foreground">他 {hidden} 点を表示</p>
+          ) : (
+            <span />
+          )}
+          {/* z-20 lifts the trigger above the card-wide link. */}
+          <span className="relative z-20 shrink-0">
+            <ReceivedBonusDialog
+              orderId={order.id}
+              existing={existing}
+              predicted={predicted}
+              catalogSynced={catalogSynced}
+              trigger={order.receivedBonuses.length > 0 ? "おまけを編集" : "おまけを記録"}
+              triggerVariant="ghost"
+            />
+          </span>
+        </div>
       </CardContent>
     </Card>
   );

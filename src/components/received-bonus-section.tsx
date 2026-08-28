@@ -2,14 +2,11 @@ import { Gift } from "lucide-react";
 import Link from "next/link";
 
 import { ImageWithFallback } from "@/components/image-with-fallback";
-import {
-  ReceivedBonusDialog,
-  type ReceivedDraft,
-} from "@/components/received-bonus-dialog";
+import { ReceivedBonusDialog } from "@/components/received-bonus-dialog";
 import { ReceivedBonusDeleteButton } from "@/components/received-bonus-delete-button";
-import { draftReceivedBonuses } from "@/lib/bonus";
 import { formatDate } from "@/lib/format";
 import type { OrderWithItems } from "@/lib/queries";
+import { buildReceivedDrafts } from "@/lib/received-draft";
 
 /** 届いたおまけ — manually recorded actuals for one order. */
 export function ReceivedBonusSection({
@@ -20,29 +17,7 @@ export function ReceivedBonusSection({
   catalogSynced: boolean;
 }) {
   const recorded = order.receivedBonuses;
-
-  const existing: ReceivedDraft[] = recorded.map((r) => ({
-    id: r.id,
-    productId: r.productId,
-    label: r.label,
-    quantity: r.quantity,
-    note: r.note,
-    imageUrl: r.imageUrl,
-  }));
-
-  const predicted: ReceivedDraft[] = draftReceivedBonuses(
-    order.items,
-    order.bonuses,
-  ).map((d) => ({
-    productId: d.productId,
-    label: d.label,
-    quantity: d.quantity,
-    note: null,
-    imageUrl:
-      d.productId !== null
-        ? (order.items.find((i) => i.productId === d.productId)?.imageUrl ?? null)
-        : null,
-  }));
+  const { existing, predicted } = buildReceivedDrafts(order);
 
   return (
     <section className="flex flex-col gap-3">

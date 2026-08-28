@@ -77,12 +77,14 @@ export function ReceivedBonusDialog({
   predicted,
   catalogSynced,
   trigger,
+  triggerVariant = "outline",
 }: {
   orderId: string;
   existing: ReceivedDraft[];
   predicted: ReceivedDraft[];
   catalogSynced: boolean;
   trigger: string;
+  triggerVariant?: "outline" | "ghost";
 }) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<RowState[]>([]);
@@ -151,7 +153,7 @@ export function ReceivedBonusDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
-          <Button variant="outline" size="sm">
+          <Button variant={triggerVariant} size="sm">
             <Gift aria-hidden="true" />
             {trigger}
           </Button>
