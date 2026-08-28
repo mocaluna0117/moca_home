@@ -10,6 +10,7 @@ import {
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { ReceivedBonusSection } from "@/components/received-bonus-section";
 import { StatusBadge } from "@/components/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -127,6 +128,55 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                   <TableCell className="text-right tabular-nums">
                     {formatYen(item.unitPriceYen * item.quantity)}
                   </TableCell>
+                </TableRow>
+              ))}
+              {order.receivedBonuses.map((r) => (
+                <TableRow key={`received-${r.id}`} className="text-muted-foreground">
+                  <TableCell>
+                    <div className="relative size-12 overflow-hidden rounded border bg-muted">
+                      {r.productId !== null ? (
+                        <ImageWithFallback
+                          src={r.imageUrl}
+                          alt={r.label}
+                          sizes="48px"
+                          className="size-full"
+                          iconClassName="size-4"
+                        />
+                      ) : (
+                        <div className="flex size-full items-center justify-center">
+                          <Gift className="size-4" aria-hidden="true" />
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-md whitespace-normal">
+                    {r.productId !== null ? (
+                      <Link
+                        href={`/products/${r.productId}`}
+                        className="text-sm leading-snug hover:underline"
+                      >
+                        {r.label}
+                      </Link>
+                    ) : (
+                      <span className="text-sm leading-snug">{r.label}</span>
+                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <Badge variant="secondary" className="font-normal">
+                        <Gift aria-hidden="true" />
+                        おまけ
+                      </Badge>
+                      {r.note && (
+                        <span className="text-xs text-muted-foreground">
+                          {r.note}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">—</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {r.quantity}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">—</TableCell>
                 </TableRow>
               ))}
               {!hasActuals && order.bonuses.gifts.map((g, i) => (

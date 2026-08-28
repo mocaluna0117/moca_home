@@ -184,7 +184,7 @@ export function ReceivedBonusDialog({
                         商品リストを読み込み中…
                       </p>
                     ) : (
-                      <ul className="max-h-48 divide-y overflow-y-auto rounded border">
+                      <ul className="max-h-64 divide-y overflow-y-auto rounded border">
                         {catalog
                           .filter((c) =>
                             row.query.trim() === ""
@@ -196,7 +196,7 @@ export function ReceivedBonusDialog({
                             <li key={c.id}>
                               <button
                                 type="button"
-                                className="flex w-full items-center gap-2 p-2 text-left hover:bg-muted"
+                                className="flex w-full items-start gap-2 p-2 text-left hover:bg-muted"
                                 onClick={() =>
                                   patchRow(row.key, {
                                     productId: c.id,
@@ -207,7 +207,7 @@ export function ReceivedBonusDialog({
                                 }
                               >
                                 <Thumb src={c.imageUrl} alt="" />
-                                <span className="line-clamp-1 flex-1 text-sm">
+                                <span className="flex-1 text-sm leading-snug break-words">
                                   {c.name}
                                 </span>
                                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
@@ -237,9 +237,11 @@ export function ReceivedBonusDialog({
                     </button>
                   </>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-start gap-2">
                     <Thumb src={row.imageUrl} alt="" />
-                    <span className="line-clamp-1 flex-1 text-sm">{row.label}</span>
+                    <span className="flex-1 text-sm leading-snug break-words">
+                      {row.label}
+                    </span>
                     <Button
                       variant="ghost"
                       size="sm"

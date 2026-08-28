@@ -108,6 +108,56 @@ export function OrderCard({
               </div>
             </li>
           ))}
+          {order.receivedBonuses.map((r, i) => (
+            <li
+              key={`received-${r.id}`}
+              // Only the first freebie gets a rule — it marks where the
+              // purchased items end; the rest read as one continuous list.
+              className={
+                i === 0
+                  ? "flex items-start gap-3 border-t pt-3"
+                  : "flex items-start gap-3"
+              }
+            >
+              <div className="relative size-16 shrink-0 overflow-hidden rounded-md border bg-muted">
+                {r.productId !== null ? (
+                  <ImageWithFallback
+                    src={r.imageUrl}
+                    alt={r.label}
+                    sizes="64px"
+                    className="size-full"
+                  />
+                ) : (
+                  <div className="flex size-full items-center justify-center">
+                    <Gift
+                      className="size-5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                {r.productId !== null ? (
+                  <Link
+                    href={`/products/${r.productId}`}
+                    className="relative z-20 line-clamp-2 text-sm leading-snug hover:underline"
+                  >
+                    {r.label}
+                  </Link>
+                ) : (
+                  <p className="line-clamp-2 text-sm leading-snug">{r.label}</p>
+                )}
+                <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
+                  <Badge variant="secondary" className="font-normal">
+                    <Gift aria-hidden="true" />
+                    おまけ
+                  </Badge>
+                  ×{r.quantity}
+                  {r.note && <span>・{r.note}</span>}
+                </p>
+              </div>
+            </li>
+          ))}
         </ul>
         {order.receivedTotal === 0 && order.bonuses.pools
           .filter(

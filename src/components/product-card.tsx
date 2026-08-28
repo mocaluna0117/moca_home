@@ -18,6 +18,14 @@ export function ProductCard({ product }: { product: ProductSummary }) {
           className="size-full"
           iconClassName="size-8"
         />
+        {product.freebieOnly && (
+          <Badge
+            variant="secondary"
+            className="absolute bottom-2 left-2 bg-background/90 font-normal"
+          >
+            おまけのみ
+          </Badge>
+        )}
         {product.fetchStatus === "not_found" && (
           <Badge
             variant="outline"
@@ -42,7 +50,10 @@ export function ProductCard({ product }: { product: ProductSummary }) {
             {formatYen(product.latestUnitPriceYen)}
           </p>
           <p className="text-xs text-muted-foreground tabular-nums">
-            {product.orderCount}回購入 ・ 計{product.totalQuantity}点
+            {product.orderCount > 0
+              ? `${product.orderCount}回購入 ・ 計${product.totalQuantity}点`
+              : "購入なし"}
+            {product.receivedCount > 0 && ` ・ おまけ ${product.receivedCount}点`}
           </p>
           <p className="text-xs text-muted-foreground tabular-nums">
             最終 {formatDate(product.lastOrderedAt)}

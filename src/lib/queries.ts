@@ -127,12 +127,17 @@ export interface ProductSummary {
   key: string;
   name: string;
   imageUrl: string | null;
-  latestUnitPriceYen: number;
+  /** null for free-text freebies — no price exists for them. */
+  latestUnitPriceYen: number | null;
   orderCount: number;
   totalQuantity: number;
   lastOrderedAt: string;
   fetchStatus: Product["fetchStatus"] | null;
   bonusRule: BonusRule | null;
+  /** Σ quantity of this product recorded as a received freebie. */
+  receivedCount: number;
+  /** true when the product only ever arrived as a freebie (never purchased). */
+  freebieOnly: boolean;
 }
 
 /**
@@ -185,7 +190,53 @@ export function getProductSummaries(q?: string): ProductSummary[] {
       lastOrderedAt: r.orderedAt,
       fetchStatus: r.productFetchStatus ?? null,
       bonusRule: parseBonusRule(r.productName),
+      receivedCount: 0,
+      freebieOnly: false,
       orderIds: new Set([r.orderId]),
+    });
+  }
+
+  // Fold in recorded freebies: they add a 「おまけ N点」 counter to products
+  // already purchased, and appear as freebie-only entries otherwise.
+  const freebies = db
+    .select({
+      productId: receivedBonuses.productId,
+      label: receivedBonuses.label,
+      quantity: receivedBonuses.quantity,
+      orderedAt: orders.orderedAt,
+      productImages: products.imageUrls,
+      productPriceYen: products.priceYen,
+      productFetchStatus: products.fetchStatus,
+    })
+    .from(receivedBonuses)
+    .innerJoin(orders, eq(orders.id, receivedBonuses.orderId))
+    .leftJoin(products, eq(products.id, receivedBonuses.productId))
+    .where(term ? like(receivedBonuses.label, `%${term}%`) : undefined)
+    .orderBy(desc(orders.orderedAt))
+    .all();
+
+  for (const f of freebies) {
+    const key = f.productId !== null ? `p:${f.productId}` : `n:${f.label}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.receivedCount += f.quantity;
+      if (f.orderedAt > existing.lastOrderedAt) existing.lastOrderedAt = f.orderedAt;
+      continue;
+    }
+    map.set(key, {
+      productId: f.productId,
+      key,
+      name: f.label,
+      imageUrl: firstImage(f.productImages),
+      latestUnitPriceYen: f.productPriceYen ?? null,
+      orderCount: 0,
+      totalQuantity: 0,
+      lastOrderedAt: f.orderedAt,
+      fetchStatus: f.productFetchStatus ?? null,
+      bonusRule: parseBonusRule(f.label),
+      receivedCount: f.quantity,
+      freebieOnly: true,
+      orderIds: new Set(),
     });
   }
 
