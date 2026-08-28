@@ -174,7 +174,7 @@ export function ReceivedBonusDialog({
           </Button>
         }
       />
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-4xl">
         {preview && (
           <ProductPreview
             key={preview.productId}
@@ -198,7 +198,7 @@ export function ReceivedBonusDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto pr-1">
+        <div className="flex max-h-[65vh] flex-col gap-3 overflow-y-auto pr-1">
           {rows.map((row) => (
             <div key={row.key} className="flex flex-col gap-2 rounded-lg border p-3">
               {row.mode === "product" ? (
@@ -400,7 +400,7 @@ function CatalogPicker({
 
   return (
     <>
-      <ul className="max-h-80 divide-y overflow-y-auto rounded border">
+      <ul className="max-h-96 divide-y overflow-y-auto rounded border">
         {shown.map((c) => (
           <li key={c.id} className="flex items-stretch">
             <button
