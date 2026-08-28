@@ -10,6 +10,7 @@ import {
   type OrderBonusResult,
 } from "@/lib/bonus";
 import { db } from "@/lib/db";
+import { parseJsonArray } from "@/lib/format";
 import {
   orderItems,
   orders,
@@ -378,6 +379,30 @@ export function getCatalogProducts(q?: string, limit = 1500): CatalogProduct[] {
       priceYen: r.priceYen,
       imageUrl: firstImage(r.imageUrls),
     }));
+}
+
+export interface CatalogProductDetail extends CatalogProduct {
+  category: string | null;
+  tags: string[];
+  imageUrls: string[];
+  descriptionHtml: string | null;
+}
+
+/** Full catalog row for the picker's preview panel (fetched on demand). */
+export function getCatalogProduct(id: number): CatalogProductDetail | null {
+  const p = db.select().from(products).where(eq(products.id, id)).get();
+  if (!p || !p.name) return null;
+  const imageUrls = parseJsonArray(p.imageUrls);
+  return {
+    id: p.id,
+    name: p.name,
+    priceYen: p.priceYen,
+    imageUrl: imageUrls[0] ?? null,
+    category: p.category,
+    tags: parseJsonArray(p.tags),
+    imageUrls,
+    descriptionHtml: p.descriptionHtml,
+  };
 }
 
 export function getStats() {

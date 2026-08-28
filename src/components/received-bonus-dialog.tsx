@@ -1,8 +1,16 @@
 "use client";
 
-import { Gift, Plus, Sparkles, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ExternalLink,
+  Gift,
+  Info,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import Image from "next/image";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { saveReceivedBonuses, type DraftRowInput } from "@/lib/actions";
@@ -17,8 +25,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { parseBonusRule } from "@/lib/bonus";
 import { formatYen } from "@/lib/format";
+import { formatRuleLong } from "@/components/bonus-badge";
 
 export interface CatalogItem {
   id: number;
@@ -89,10 +100,14 @@ export function ReceivedBonusDialog({
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<RowState[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[] | null>(catalogCache);
+  const [preview, setPreview] = useState<{ rowKey: number; productId: number } | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
+    setPreview(null);
     if (next) {
       setRows(existing.length > 0 ? existing.map(toRow) : [emptyRow()]);
       if (!catalogCache) {
@@ -160,6 +175,22 @@ export function ReceivedBonusDialog({
         }
       />
       <DialogContent className="sm:max-w-lg">
+        {preview && (
+          <ProductPreview
+            key={preview.productId}
+            productId={preview.productId}
+            onSelect={(item) => {
+              patchRow(preview.rowKey, {
+                productId: item.id,
+                label: item.name,
+                imageUrl: item.imageUrl,
+                query: "",
+              });
+              setPreview(null);
+            }}
+            onClose={() => setPreview(null)}
+          />
+        )}
         <DialogHeader>
           <DialogTitle>届いたおまけを記録</DialogTitle>
           <DialogDescription>
@@ -182,6 +213,9 @@ export function ReceivedBonusDialog({
                     <CatalogPicker
                       catalog={catalog}
                       query={row.query}
+                      onPreview={(c) =>
+                        setPreview({ rowKey: row.key, productId: c.id })
+                      }
                       onSelect={(c) =>
                         patchRow(row.key, {
                           productId: c.id,
@@ -210,6 +244,18 @@ export function ReceivedBonusDialog({
                     <span className="flex-1 text-sm leading-snug break-words">
                       {row.label}
                     </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setPreview({
+                          rowKey: row.key,
+                          productId: row.productId as number,
+                        })
+                      }
+                    >
+                      詳細
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -334,10 +380,12 @@ function CatalogPicker({
   catalog,
   query,
   onSelect,
+  onPreview,
 }: {
   catalog: CatalogItem[] | null;
   query: string;
   onSelect: (item: CatalogItem) => void;
+  onPreview: (item: CatalogItem) => void;
 }) {
   if (catalog === null) {
     return (
@@ -354,10 +402,10 @@ function CatalogPicker({
     <>
       <ul className="max-h-80 divide-y overflow-y-auto rounded border">
         {shown.map((c) => (
-          <li key={c.id}>
+          <li key={c.id} className="flex items-stretch">
             <button
               type="button"
-              className="flex w-full items-start gap-2 p-2 text-left hover:bg-muted"
+              className="flex flex-1 items-start gap-2 p-2 text-left hover:bg-muted"
               onClick={() => onSelect(c)}
             >
               <Thumb src={c.imageUrl} alt="" />
@@ -367,6 +415,15 @@ function CatalogPicker({
               <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                 {formatYen(c.priceYen)}
               </span>
+            </button>
+            <button
+              type="button"
+              aria-label={`${c.name} の詳細を見る`}
+              title="詳細を見る"
+              className="shrink-0 border-l px-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => onPreview(c)}
+            >
+              <Info className="size-4" aria-hidden="true" />
             </button>
           </li>
         ))}
@@ -387,6 +444,171 @@ function CatalogPicker({
               : "")}
       </p>
     </>
+  );
+}
+
+interface CatalogProductDetail extends CatalogItem {
+  category: string | null;
+  tags: string[];
+  imageUrls: string[];
+  descriptionHtml: string | null;
+}
+
+// Details are fetched per product (descriptions are long) and cached for the
+// session so re-opening the same product is instant.
+const detailCache = new Map<number, CatalogProductDetail>();
+
+/**
+ * Full-surface preview inside the record dialog. A nested modal would fight
+ * the parent dialog for focus, so this covers the dialog body instead and
+ * returns to the picker via 戻る.
+ */
+function ProductPreview({
+  productId,
+  onSelect,
+  onClose,
+}: {
+  productId: number;
+  onSelect: (item: CatalogProductDetail) => void;
+  onClose: () => void;
+}) {
+  const [item, setItem] = useState<CatalogProductDetail | null>(
+    detailCache.get(productId) ?? null,
+  );
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    // Cache hits are served by the useState initializer (the component is
+    // keyed per product), so the effect only runs the network path.
+    if (detailCache.has(productId)) return;
+    let alive = true;
+    fetch(`/api/catalog/${productId}`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("not found"))))
+      .then((data: { item: CatalogProductDetail }) => {
+        detailCache.set(productId, data.item);
+        if (alive) setItem(data.item);
+      })
+      .catch(() => alive && setFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, [productId]);
+
+  const rule = item ? parseBonusRule(item.name) : null;
+
+  return (
+    <div className="absolute inset-0 z-20 flex flex-col gap-3 rounded-xl bg-popover p-4">
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          <ArrowLeft aria-hidden="true" />
+          戻る
+        </Button>
+        <span className="text-sm font-medium">商品の詳細</span>
+      </div>
+
+      {failed ? (
+        <p className="text-sm text-muted-foreground">
+          商品情報を取得できませんでした。
+        </p>
+      ) : !item ? (
+        <p className="text-sm text-muted-foreground">読み込み中…</p>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+          <div className="flex gap-3">
+            <div className="relative size-28 shrink-0 overflow-hidden rounded border bg-muted">
+              {item.imageUrl ? (
+                <Image
+                  src={item.imageUrl}
+                  alt=""
+                  fill
+                  sizes="112px"
+                  className="object-cover"
+                  unoptimized
+                />
+              ) : (
+                <div className="flex size-full items-center justify-center">
+                  <Gift className="size-5 text-muted-foreground" aria-hidden="true" />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <p className="text-sm leading-snug break-words">{item.name}</p>
+              <p className="font-semibold tabular-nums">
+                {formatYen(item.priceYen)}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  税込
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {item.category && (
+                  <Badge variant="outline" className="font-normal">
+                    {item.category}
+                  </Badge>
+                )}
+                {item.tags.map((t) => (
+                  <Badge key={t} variant="outline" className="font-normal">
+                    {t}
+                  </Badge>
+                ))}
+                {rule && (
+                  <Badge variant="secondary" className="font-normal">
+                    <Gift aria-hidden="true" />
+                    {formatRuleLong(rule)}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {item.imageUrls.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              {item.imageUrls.slice(1).map((src) => (
+                <span
+                  key={src}
+                  className="relative size-14 overflow-hidden rounded border bg-muted"
+                >
+                  <Image
+                    src={src}
+                    alt=""
+                    fill
+                    sizes="56px"
+                    className="object-cover"
+                    unoptimized
+                  />
+                </span>
+              ))}
+            </div>
+          )}
+
+          {item.descriptionHtml && (
+            <div
+              className="text-xs leading-relaxed break-words text-muted-foreground [&_a]:underline [&_img]:my-2 [&_img]:h-auto [&_img]:max-w-full"
+              // Sanitized at ingest (parseProductPage strips scripts/handlers).
+              dangerouslySetInnerHTML={{ __html: item.descriptionHtml }}
+            />
+          )}
+
+          <a
+            href={`https://20and20.pet/store/products/detail/${item.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            ショップで見る
+            <ExternalLink className="size-3" aria-hidden="true" />
+          </a>
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 border-t pt-3">
+        <Button variant="ghost" onClick={onClose}>
+          閉じる
+        </Button>
+        <Button disabled={!item} onClick={() => item && onSelect(item)}>
+          この商品を選ぶ
+        </Button>
+      </div>
+    </div>
   );
 }
 
