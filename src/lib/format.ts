@@ -34,6 +34,17 @@ export const formatSyncedAt = (iso: string | null | undefined) => {
   return `${Math.floor(hours / 24)}日前`;
 };
 
+/**
+ * "Now" as an ISO-8601 string with an explicit +09:00 offset, matching the
+ * convention every date column in this schema uses. `toISOString()` alone
+ * yields UTC, which renders as the previous day for anything recorded after
+ * 09:00 JST.
+ */
+export const nowJstIso = (): string =>
+  new Date(Date.now() + 9 * 60 * 60 * 1000)
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "+09:00");
+
 export const parseJsonArray = (raw: string | null | undefined): string[] => {
   if (!raw) return [];
   try {

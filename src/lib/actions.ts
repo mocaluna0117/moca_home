@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
+import { nowJstIso } from "@/lib/format";
 import { orders, products, receivedBonuses } from "@/lib/db/schema";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -17,7 +18,7 @@ export interface DraftRowInput {
   note: string | null;
 }
 
-const now = () => new Date().toISOString();
+const now = nowJstIso;
 
 const MAX_ROWS = 20;
 

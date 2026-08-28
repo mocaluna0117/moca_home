@@ -179,50 +179,18 @@ export function ReceivedBonusDialog({
                       placeholder="商品名で検索"
                       aria-label="商品名で検索"
                     />
-                    {catalog === null ? (
-                      <p className="text-xs text-muted-foreground">
-                        商品リストを読み込み中…
-                      </p>
-                    ) : (
-                      <ul className="max-h-64 divide-y overflow-y-auto rounded border">
-                        {catalog
-                          .filter((c) =>
-                            row.query.trim() === ""
-                              ? true
-                              : c.name.includes(row.query.trim()),
-                          )
-                          .slice(0, 8)
-                          .map((c) => (
-                            <li key={c.id}>
-                              <button
-                                type="button"
-                                className="flex w-full items-start gap-2 p-2 text-left hover:bg-muted"
-                                onClick={() =>
-                                  patchRow(row.key, {
-                                    productId: c.id,
-                                    label: c.name,
-                                    imageUrl: c.imageUrl,
-                                    query: "",
-                                  })
-                                }
-                              >
-                                <Thumb src={c.imageUrl} alt="" />
-                                <span className="flex-1 text-sm leading-snug break-words">
-                                  {c.name}
-                                </span>
-                                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                                  {formatYen(c.priceYen)}
-                                </span>
-                              </button>
-                            </li>
-                          ))}
-                        {catalog.length === 0 && (
-                          <li className="p-2 text-xs text-muted-foreground">
-                            商品リストが空です
-                          </li>
-                        )}
-                      </ul>
-                    )}
+                    <CatalogPicker
+                      catalog={catalog}
+                      query={row.query}
+                      onSelect={(c) =>
+                        patchRow(row.key, {
+                          productId: c.id,
+                          label: c.name,
+                          imageUrl: c.imageUrl,
+                          query: "",
+                        })
+                      }
+                    />
                     {!catalogSynced && (
                       <p className="text-xs text-muted-foreground">
                         カタログ未同期のため購入済み商品のみ表示しています。ヘッダーの「カタログ同期」で全商品から選べるようになります。
@@ -355,6 +323,70 @@ export function ReceivedBonusDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** How many matches are rendered at once — the list scrolls, and the count
+ *  line below tells you how many more the filter matched. */
+const PICKER_LIMIT = 50;
+
+function CatalogPicker({
+  catalog,
+  query,
+  onSelect,
+}: {
+  catalog: CatalogItem[] | null;
+  query: string;
+  onSelect: (item: CatalogItem) => void;
+}) {
+  if (catalog === null) {
+    return (
+      <p className="text-xs text-muted-foreground">商品リストを読み込み中…</p>
+    );
+  }
+
+  const term = query.trim();
+  const matches =
+    term === "" ? catalog : catalog.filter((c) => c.name.includes(term));
+  const shown = matches.slice(0, PICKER_LIMIT);
+
+  return (
+    <>
+      <ul className="max-h-80 divide-y overflow-y-auto rounded border">
+        {shown.map((c) => (
+          <li key={c.id}>
+            <button
+              type="button"
+              className="flex w-full items-start gap-2 p-2 text-left hover:bg-muted"
+              onClick={() => onSelect(c)}
+            >
+              <Thumb src={c.imageUrl} alt="" />
+              <span className="flex-1 text-sm leading-snug break-words">
+                {c.name}
+              </span>
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                {formatYen(c.priceYen)}
+              </span>
+            </button>
+          </li>
+        ))}
+        {shown.length === 0 && (
+          <li className="p-3 text-xs text-muted-foreground">
+            {catalog.length === 0
+              ? "商品リストが空です。ヘッダーの「カタログ同期」を実行してください。"
+              : "一致する商品がありません"}
+          </li>
+        )}
+      </ul>
+      <p className="text-xs text-muted-foreground tabular-nums">
+        {term === ""
+          ? `全 ${catalog.length} 件（新しい順に ${shown.length} 件を表示・スクロールできます）`
+          : `「${term}」に一致 ${matches.length} 件` +
+            (matches.length > shown.length
+              ? `（上位 ${shown.length} 件を表示）`
+              : "")}
+      </p>
+    </>
   );
 }
 
