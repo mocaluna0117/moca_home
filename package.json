@@ -10,7 +10,8 @@
     "sync": "tsx --conditions=react-server --env-file=.env.local scripts/sync.ts",
     "db:push": "tsx --env-file=.env.local node_modules/drizzle-kit/bin.cjs push",
     "test": "tsx --test src/lib/bonus.test.ts",
-    "db:migrate": "tsx scripts/migrate-to-turso.ts"
+    "db:migrate": "tsx --env-file-if-exists=.env.turso scripts/migrate-to-turso.ts",
+    "sync:prod": "tsx --conditions=react-server --env-file=.env.local --env-file=.env.turso scripts/sync.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

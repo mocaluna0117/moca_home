@@ -18,21 +18,33 @@ CLI は不要です（Homebrew 版は `libsql/sqld` タップへの依存で失�
    - **Database URL**（`libsql://20and20-xxxx.turso.io`）
    - **Auth Token**（トークン作成ボタンから生成）
 
-## 2. 既存データを Turso へ移す
+> **Auth Token は「+ Create Token」で生成**します。表示は一度きりなのですぐコピーしてください。
+> 権限は **Full Access**（読み書き）、有効期限は Never で構いません。
+> Read Only にするとおまけの記録や同期が保存できません。
+
+## 2. 接続情報をファイルに置く
+
+`.env.turso.example` をコピーして `.env.turso` を作り、トークンを貼ります
+（`.env.*` は gitignore 済み。チャットや git に出さないこと）。
+
+```bash
+cp .env.turso.example .env.turso
+# エディタで TURSO_AUTH_TOKEN を埋める
+```
+
+## 3. 既存データを Turso へ移す
 
 同梱の移行スクリプトが、ローカルの `data/app.db` からスキーマごとコピーします
 （`@libsql/client` がローカルの `file:` DB も読めるため、追加ツールは不要）。
 
 ```bash
-TURSO_DATABASE_URL='libsql://20and20-xxxx.turso.io' \
-TURSO_AUTH_TOKEN='<トークン>' \
 npm run db:migrate
 ```
 
 最後に件数の照合結果が出ます（orders 69 / products 1480 など）。
 各テーブルを空にしてから入れ直すので、**途中で失敗しても再実行すれば復旧**します。
 
-## 3. Vercel へデプロイ（あなたの操作）
+## 4. Vercel へデプロイ（あなたの操作）
 
 ```bash
 npx vercel login
@@ -56,7 +68,7 @@ npx vercel link          # 既存プロジェクトを作成/紐付け
 npx vercel --prod
 ```
 
-## 4. デプロイ後の確認
+## 5. デプロイ後の確認
 
 - 未ログインで開くと `/login` に飛ぶ。`/api/catalog` を直接叩くと 401
 - パスワードを入れると購入履歴が表示される（Turso のデータ）
@@ -74,7 +86,7 @@ npx vercel --prod
 API を直接叩いても 501 を返します。手元から**本番DBに向けて**実行してください:
 
 ```bash
-TURSO_DATABASE_URL='libsql://...' TURSO_AUTH_TOKEN='...' npm run sync -- --catalog
+npm run sync:prod -- --catalog     # .env.turso を読んで本番DBに書き込む
 ```
 
 `sync_runs` テーブルで実行中ロックを取るため、CLI と Vercel の同時実行はどちらか一方が
@@ -82,6 +94,6 @@ TURSO_DATABASE_URL='libsql://...' TURSO_AUTH_TOKEN='...' npm run sync -- --catal
 
 ## 注意点
 
-- **Vercel のデータセンターIPからショップにログイン**します。弾かれるようなら注文同期も CLI 実行に切り替えてください（コード変更は不要、上と同じ環境変数を付けて `npm run sync`）
+- **Vercel のデータセンターIPからショップにログイン**します。弾かれるようなら注文同期も CLI 実行に切り替えてください（コード変更は不要、`npm run sync:prod`）
 - `.env.local` と `data/` は gitignore 済み。認証情報をコミットしないでください
 - ローカル開発は今まで通り。`APP_PASSWORD` を未設定にすればログイン画面は出ません
