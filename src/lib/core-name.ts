@@ -152,19 +152,41 @@ const FAMILY_RE: readonly RegExp[] = [
   /おやつ/g, /チーズ/g,
 ];
 
-/** Closed set of real line-modifiers (frequency ≥2 in the corpus, hand-vetted
- *  to exclude ingredient and effect words). Longest match wins. */
-const MODIFIERS: readonly string[] = [
-  "30種の栄養", "50種の栄養", "10兆個の", "30種の", "50種の",
-  "こだわり", "お守り", "美容", "おかず", "有機納豆", "納豆", "和食", "有機",
-  "30種", "50種", "10兆個", "特別な", "特別", "濃厚", "特濃", "粉",
-  "長寿", "生", "低カロリー", "太切り", "中切り", "細切り", "ミニミニ", "ミニ",
-  "ご褒美", "ご馳走", "手作り", "非売品", "お野菜", "ヨーグルト", "ヤギミルク",
-  "クリスマス", "お正月", "海鮮", "水切り", "味比べ", "詰め合わせ",
-  "巻き巻き", "パラパラ", "鹿肉", "馬肉", "カモ肉",
-].sort((a, b) => b.length - a.length);
+/**
+ * Left extension stops here. These characters separate the product name from
+ * the surrounding copy; ♡ and ♪ are decorative *and* separators in this shop,
+ * and treating them as separators is the safe reading (a shorter span is a
+ * true substring of the name; a longer one can swallow marketing copy).
+ * MASK is included so an extension never runs into already-masked noise.
+ */
+const STOP_CHARS = new Set([
+  ..."♡♪♥❤★☆！!？?。、,／/｜|＼\\【】『』「」（）()[]〔〕〈〉《》…‥~〜\n\t ",
+  MASK,
+  "　",
+]);
 
-const LEAD_TRIM = /^[のとはがをにでもやへ+＋&＆・、,]+/;
+/** Longest name-ish prefix we are willing to absorb. */
+const MAX_EXTEND = 28;
+
+/**
+ * Leading fragments that are copy, not name, when they open the segment.
+ * Only stripped from the START of the extended span.
+ */
+const LEAD_NOISE: readonly RegExp[] = [
+  /^(?:大好評につき)?商品化/,
+  /^大好評/, /^大人気/, /^本日の/, /^今月の/, /^今週の/,
+  /^みんな大好き/, /^おすすめ/, /^人気/,
+  /^\d+コ?ご?注文/,
+];
+
+/**
+ * Only connector punctuation. Kana particles were in this class and ate the
+ * first character of real names (「もちもちポーク」 → 「ちもちポーク」, since
+ * 「も」 is also a particle); a dangling leading particle is far rarer than a
+ * name that starts with one.
+ */
+const LEAD_TRIM = /^[+＋&＆・、,]+/;
+
 const BRACKET_RE = /【[^】]*】/g;
 
 // ------------------------------------------------------------------ matching
@@ -219,21 +241,35 @@ export function findCoreName(title: string): NameHighlight | null {
   }
   if (!hit) return null;
 
-  // extend left by the longest whitelisted modifier, mask-free
-  let { start } = hit;
+  // Extend left across the contiguous name-ish run: the ingredient/flavour
+  // that says WHAT this ふりかけ / ご飯 / ビッツ actually is. Noise is already
+  // masked, so the walk stops at real copy boundaries on its own.
   const { end } = hit;
-  for (const mod of MODIFIERS) {
-    const at = start - mod.length;
-    if (at >= 0 && scan.startsWith(mod, at) && !scan.slice(at, start).includes(MASK)) {
-      start = at;
+  let start = hit.start;
+  const floor = Math.max(0, end - MAX_EXTEND);
+  while (start > floor && !STOP_CHARS.has(scan[start - 1])) start--;
+
+  // The cap (rather than a real boundary) stopped the walk — the start would
+  // sit mid-word ("ーブ育ち若鶏…" out of "ハーブ育ち若鶏…"). Snap forward to
+  // the next connector so the span always begins at a word boundary, and give
+  // up on the extension entirely if there is none.
+  if (start === floor && start > 0 && !STOP_CHARS.has(scan[start - 1])) {
+    const next = scan.slice(start, hit.start).search(/[のと＋+&・]/);
+    start = next >= 0 ? start + next + 1 : hit.start;
+  }
+
+  // Drop leading copy fragments and particles the walk may have picked up.
+  for (const re of LEAD_NOISE) {
+    const m = re.exec(scan.slice(start, end));
+    if (m) {
+      start += m[0].length;
       break;
     }
   }
-
   const trim = LEAD_TRIM.exec(scan.slice(start, end));
   if (trim) start += trim[0].length;
-  if (end - start < 2) return null;
 
+  if (end - start < 2) return null;
   return { start, end };
 }
 

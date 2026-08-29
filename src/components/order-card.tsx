@@ -30,7 +30,10 @@ export function OrderCard({
     // Stretched-link pattern: one overlay link makes the whole card open the
     // order, while the product links inside stay clickable via z-10 (nesting
     // real <a>s would be invalid HTML).
-    <Card className="relative cursor-pointer transition-colors hover:border-foreground/20 hover:bg-muted/30 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring">
+    // `isolate` keeps the card's internal z-10/z-20 layering inside the card.
+    // Without it those children share the page stacking context with the
+    // sticky header (also z-20) and, being later in the DOM, scroll over it.
+    <Card className="relative isolate cursor-pointer transition-colors hover:border-foreground/20 hover:bg-muted/30 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring">
       <Link
         href={`/orders/${order.id}`}
         aria-label={`注文 ${order.id}（${formatDate(order.orderedAt)}）の詳細`}
