@@ -78,11 +78,11 @@ export function OrderCard({
         <ul className="flex flex-col gap-3">
           {visible.map((item) => (
             <li key={item.id} className="flex items-start gap-3">
-              <div className="relative size-16 shrink-0 overflow-hidden rounded-md border bg-muted">
+              <div className="relative size-20 shrink-0 overflow-hidden rounded-md border bg-muted sm:size-24">
                 <ImageWithFallback
                   src={item.imageUrl}
                   alt={item.productName}
-                  sizes="64px"
+                  sizes="(min-width: 640px) 96px, 80px"
                   className="size-full"
                 />
               </div>
@@ -90,12 +90,12 @@ export function OrderCard({
                 {item.productId !== null ? (
                   <Link
                     href={`/products/${item.productId}`}
-                    className="relative z-20 line-clamp-2 text-sm leading-snug hover:underline"
+                    className="relative z-20 line-clamp-3 text-sm leading-snug hover:underline"
                   >
                     <ProductName name={item.productName} />
                   </Link>
                 ) : (
-                  <p className="line-clamp-2 text-sm leading-snug">
+                  <p className="line-clamp-3 text-sm leading-snug">
                     <ProductName name={item.productName} />
                   </p>
                 )}
@@ -123,18 +123,18 @@ export function OrderCard({
                   : "flex items-start gap-3"
               }
             >
-              <div className="relative size-16 shrink-0 overflow-hidden rounded-md border bg-muted">
+              <div className="relative size-20 shrink-0 overflow-hidden rounded-md border bg-muted sm:size-24">
                 {r.productId !== null ? (
                   <ImageWithFallback
                     src={r.imageUrl}
                     alt={r.label}
-                    sizes="64px"
+                    sizes="(min-width: 640px) 96px, 80px"
                     className="size-full"
                   />
                 ) : (
                   <div className="flex size-full items-center justify-center">
                     <Gift
-                      className="size-5 text-muted-foreground"
+                      className="size-6 text-muted-foreground"
                       aria-hidden="true"
                     />
                   </div>
@@ -144,12 +144,12 @@ export function OrderCard({
                 {r.productId !== null ? (
                   <Link
                     href={`/products/${r.productId}`}
-                    className="relative z-20 line-clamp-2 text-sm leading-snug hover:underline"
+                    className="relative z-20 line-clamp-3 text-sm leading-snug hover:underline"
                   >
                     <ProductName name={r.label} />
                   </Link>
                 ) : (
-                  <p className="line-clamp-2 text-sm leading-snug">
+                  <p className="line-clamp-3 text-sm leading-snug">
                     <ProductName name={r.label} />
                   </p>
                 )}
