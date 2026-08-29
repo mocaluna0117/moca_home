@@ -8,30 +8,29 @@ Vercel はファイルを保存できないため、SQLite の中身を **Turso*
 - GitHub リポジトリ: `mocaluna0117/20_and_20_management`(現在 **Public**。気になる場合は Private に変更を推奨)
 - ローカルの `data/app.db` に取り込み済みのデータ(注文69件・商品1,480件)
 
-## 1. Turso のセットアップ（あなたの操作）
+## 1. Turso のセットアップ（あなたの操作・ブラウザのみ）
 
-```bash
-brew install tursodatabase/tap/turso
-turso auth signup                 # ブラウザが開きます
+CLI は不要です（Homebrew 版は `libsql/sqld` タップへの依存で失敗することがあります）。
 
-turso db create 20and20           # DB作成
-turso db show 20and20 --url       # → libsql://20and20-xxxx.turso.io  （控える）
-turso db tokens create 20and20    # → 認証トークン（控える）
-```
+1. https://app.turso.tech を開き、GitHub アカウントでサインアップ
+2. **Create Database** → 名前 `20and20`、リージョンは **Tokyo (nrt)**
+3. 作成後の画面で次の2つを控える
+   - **Database URL**（`libsql://20and20-xxxx.turso.io`）
+   - **Auth Token**（トークン作成ボタンから生成）
 
 ## 2. 既存データを Turso へ移す
 
-```bash
-# ローカルDBをダンプして流し込む（スキーマもデータも一括）
-sqlite3 data/app.db .dump > /tmp/app-dump.sql
-turso db shell 20and20 < /tmp/app-dump.sql
+同梱の移行スクリプトが、ローカルの `data/app.db` からスキーマごとコピーします
+（`@libsql/client` がローカルの `file:` DB も読めるため、追加ツールは不要）。
 
-# 件数が一致するか確認
-turso db shell 20and20 "select count(*) from orders;"      # 69
-turso db shell 20and20 "select count(*) from products;"    # 1480
+```bash
+TURSO_DATABASE_URL='libsql://20and20-xxxx.turso.io' \
+TURSO_AUTH_TOKEN='<トークン>' \
+npm run db:migrate
 ```
 
-やり直したい場合は `turso db destroy 20and20` → 手順1のDB作成からやり直すのが確実です。
+最後に件数の照合結果が出ます（orders 69 / products 1480 など）。
+各テーブルを空にしてから入れ直すので、**途中で失敗しても再実行すれば復旧**します。
 
 ## 3. Vercel へデプロイ（あなたの操作）
 

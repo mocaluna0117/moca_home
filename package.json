@@ -9,7 +9,8 @@
     "lint": "eslint",
     "sync": "tsx --conditions=react-server --env-file=.env.local scripts/sync.ts",
     "db:push": "tsx --env-file=.env.local node_modules/drizzle-kit/bin.cjs push",
-    "test": "tsx --test src/lib/bonus.test.ts"
+    "test": "tsx --test src/lib/bonus.test.ts",
+    "db:migrate": "tsx scripts/migrate-to-turso.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
