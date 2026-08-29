@@ -49,9 +49,9 @@ export async function runSync(
   onProgress?: (p: SyncProgress) => void,
 ): Promise<SyncSummary> {
   const config = loadConfig();
-  assertNoActiveRun();
+  await assertNoActiveRun();
 
-  const run = beginRun("orders");
+  const run = await beginRun("orders");
 
   const summary: SyncSummary = {
     totalOrders: 0,
@@ -73,7 +73,7 @@ export async function runSync(
       fetchOrderListPage(client, 1),
     );
     const lastPage = first.lastPage;
-    setRunTotal(run.id, first.totalCount ?? null);
+    await setRunTotal(run.id, first.totalCount ?? null);
     onProgress?.({ phase: "list", page: 1, lastPage });
 
     const listed = new Map<string, (typeof first.orders)[number]>();
@@ -96,16 +96,13 @@ export async function runSync(
     summary.totalOrders = listed.size;
 
     const existingIds = new Set(
-      db
-        .select({ id: orders.id })
-        .from(orders)
-        .all()
-        .map((r) => r.id),
+      (await db.select({ id: orders.id }).from(orders).all()).map((r) => r.id),
     );
 
     for (const order of listed.values()) {
       if (!existingIds.has(order.id)) summary.ordersInserted++;
-      db.insert(orders)
+      await db
+        .insert(orders)
         .values({
           id: order.id,
           orderedAt: order.orderedAt,
@@ -124,12 +121,13 @@ export async function runSync(
     }
 
     // --- phase 2: order details, only for orders never detailed before
-    const pending = db
-      .select({ id: orders.id })
-      .from(orders)
-      .where(isNull(orders.detailFetchedAt))
-      .all()
-      .map((r) => r.id);
+    const pending = (
+      await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(isNull(orders.detailFetchedAt))
+        .all()
+    ).map((r) => r.id);
 
     const total = pending.length;
     onProgress?.({ phase: "orders", done: 0, total });
@@ -145,8 +143,9 @@ export async function runSync(
         ? detail.items
         : listItems.map((i) => ({ ...i, productId: null }));
 
-      db.transaction((tx) => {
-        tx.update(orders)
+      await db.transaction(async (tx) => {
+        await tx
+          .update(orders)
           .set({
             orderedAt: detail.orderedAt ?? listed.get(orderId)?.orderedAt,
             status: detail.status ?? undefined,
@@ -164,16 +163,18 @@ export async function runSync(
         // Product stubs must exist before order_items can reference them.
         for (const item of items) {
           if (item.productId === null) continue;
-          tx.insert(products)
+          await tx
+            .insert(products)
             .values({ id: item.productId, fetchStatus: "pending" })
             .onConflictDoNothing()
             .run();
         }
 
         // No natural key for a line item — replace the set wholesale.
-        tx.delete(orderItems).where(eq(orderItems.orderId, orderId)).run();
+        await tx.delete(orderItems).where(eq(orderItems.orderId, orderId)).run();
         for (const item of items) {
-          tx.insert(orderItems)
+          await tx
+            .insert(orderItems)
             .values({
               orderId,
               productId: item.productId,
@@ -187,24 +188,26 @@ export async function runSync(
       });
 
       summary.ordersDetailed++;
-      heartbeat(run.id, summary.ordersDetailed);
+      await heartbeat(run.id, summary.ordersDetailed);
       onProgress?.({ phase: "orders", done: index + 1, total });
     }
 
     // --- phase 3: product enrichment (never retries known-gone products)
-    const productQueue = db
-      .select({ id: products.id })
-      .from(products)
-      .where(inArray(products.fetchStatus, ["pending", "error"]))
-      .all()
-      .map((r) => r.id);
+    const productQueue = (
+      await db
+        .select({ id: products.id })
+        .from(products)
+        .where(inArray(products.fetchStatus, ["pending", "error"]))
+        .all()
+    ).map((r) => r.id);
 
     onProgress?.({ phase: "products", done: 0, total: productQueue.length });
 
     for (const [index, productId] of productQueue.entries()) {
       try {
         const parsed = await fetchProduct(client, productId);
-        db.update(products)
+        await db
+          .update(products)
           .set({
             name: parsed.name,
             priceYen: parsed.priceYen,
@@ -221,7 +224,8 @@ export async function runSync(
         summary.productsOk++;
       } catch (err) {
         const gone = err instanceof NotFoundError;
-        db.update(products)
+        await db
+          .update(products)
           .set({
             fetchStatus: gone ? "not_found" : "error",
             fetchedAt: now(),
@@ -232,7 +236,7 @@ export async function runSync(
         if (gone) summary.productsNotFound++;
         else summary.productsError++;
       }
-      heartbeat(run.id, summary.ordersDetailed);
+      await heartbeat(run.id, summary.ordersDetailed);
       onProgress?.({
         phase: "products",
         done: index + 1,
@@ -240,7 +244,7 @@ export async function runSync(
       });
     }
 
-    completeRun(run.id, {
+    await completeRun(run.id, {
       total: summary.totalOrders,
       processed: summary.ordersDetailed,
     });
@@ -254,7 +258,7 @@ export async function runSync(
         : err instanceof Error
           ? err.message
           : String(err);
-    failRun(run.id, message);
+    await failRun(run.id, message);
     throw err;
   }
 }

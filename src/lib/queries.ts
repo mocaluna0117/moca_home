@@ -52,8 +52,10 @@ function firstImage(raw: string | null): string | null {
 }
 
 /** One bulk query; grouped in memory (same idiom as the items grouping). */
-function fetchReceivedByOrder(orderId?: string): Map<string, ReceivedBonusRow[]> {
-  const rows = db
+async function fetchReceivedByOrder(
+  orderId?: string,
+): Promise<Map<string, ReceivedBonusRow[]>> {
+  const rows = await db
     .select({
       row: receivedBonuses,
       productImages: products.imageUrls,
@@ -90,11 +92,11 @@ function withBonuses(
 }
 
 /** Orders newest-first; `q` filters by product name within the order. */
-export function getOrders(q?: string): OrderWithItems[] {
+export async function getOrders(q?: string): Promise<OrderWithItems[]> {
   const term = q?.trim();
 
   const rows = term
-    ? db
+    ? await db
         .select()
         .from(orders)
         .where(
@@ -102,13 +104,13 @@ export function getOrders(q?: string): OrderWithItems[] {
         )
         .orderBy(desc(orders.orderedAt))
         .all()
-    : db.select().from(orders).orderBy(desc(orders.orderedAt)).all();
+    : await db.select().from(orders).orderBy(desc(orders.orderedAt)).all();
 
   if (rows.length === 0) return [];
 
   // One query for every item, then group in memory — 129 rows today, and it
   // keeps the N+1 out of the render path.
-  const items = db.select().from(orderItems).all();
+  const items = await db.select().from(orderItems).all();
   const byOrder = new Map<string, OrderItem[]>();
   for (const item of items) {
     const list = byOrder.get(item.orderId);
@@ -116,7 +118,7 @@ export function getOrders(q?: string): OrderWithItems[] {
     else byOrder.set(item.orderId, [item]);
   }
 
-  const receivedByOrder = fetchReceivedByOrder();
+  const receivedByOrder = await fetchReceivedByOrder();
   return rows.map((o) =>
     withBonuses(o, byOrder.get(o.id) ?? [], receivedByOrder.get(o.id) ?? []),
   );
@@ -145,10 +147,10 @@ export interface ProductSummary {
  * Purchase history grouped by product. Deduped on product_id when present,
  * otherwise on the snapshot name (deleted products lose their link).
  */
-export function getProductSummaries(q?: string): ProductSummary[] {
+export async function getProductSummaries(q?: string): Promise<ProductSummary[]> {
   const term = q?.trim();
 
-  const rows = db
+  const rows = await db
     .select({
       productId: orderItems.productId,
       productName: orderItems.productName,
@@ -199,7 +201,7 @@ export function getProductSummaries(q?: string): ProductSummary[] {
 
   // Fold in recorded freebies: they add a 「おまけ N点」 counter to products
   // already purchased, and appear as freebie-only entries otherwise.
-  const freebies = db
+  const freebies = await db
     .select({
       productId: receivedBonuses.productId,
       label: receivedBonuses.label,
@@ -250,15 +252,15 @@ export function getProductSummaries(q?: string): ProductSummary[] {
     .sort((a, b) => (a.lastOrderedAt < b.lastOrderedAt ? 1 : -1));
 }
 
-export function getOrder(id: string): OrderWithItems | null {
-  const order = db.select().from(orders).where(eq(orders.id, id)).get();
+export async function getOrder(id: string): Promise<OrderWithItems | null> {
+  const order = await db.select().from(orders).where(eq(orders.id, id)).get();
   if (!order) return null;
-  const items = db
+  const items = await db
     .select()
     .from(orderItems)
     .where(eq(orderItems.orderId, id))
     .all();
-  const received = fetchReceivedByOrder(id).get(id) ?? [];
+  const received = (await fetchReceivedByOrder(id)).get(id) ?? [];
   return withBonuses(order, items, received);
 }
 
@@ -280,10 +282,11 @@ export interface ProductDetail {
   }>;
 }
 
-export function getProductDetail(id: number): ProductDetail {
-  const product = db.select().from(products).where(eq(products.id, id)).get() ?? null;
+export async function getProductDetail(id: number): Promise<ProductDetail> {
+  const product =
+    (await db.select().from(products).where(eq(products.id, id)).get()) ?? null;
 
-  const history = db
+  const history = await db
     .select({
       orderId: orders.id,
       orderedAt: orders.orderedAt,
@@ -304,11 +307,9 @@ export function getProductDetail(id: number): ProductDetail {
   // Activation depends on each order's FULL item set (pooling), so pull the
   // sibling items of every order in the history and compute per order.
   const historyOrderIds = new Set(history.map((h) => h.orderId));
-  const siblingItems = db
-    .select()
-    .from(orderItems)
-    .all()
-    .filter((i) => historyOrderIds.has(i.orderId));
+  const siblingItems = (await db.select().from(orderItems).all()).filter((i) =>
+    historyOrderIds.has(i.orderId),
+  );
   const itemsByOrder = new Map<string, OrderItem[]>();
   for (const item of siblingItems) {
     const list = itemsByOrder.get(item.orderId);
@@ -353,9 +354,12 @@ export interface CatalogProduct {
  * Picker source: every live catalog product, newest (highest id) first —
  * freebies are usually current products.
  */
-export function getCatalogProducts(q?: string, limit = 1500): CatalogProduct[] {
+export async function getCatalogProducts(
+  q?: string,
+  limit = 1500,
+): Promise<CatalogProduct[]> {
   const term = q?.trim();
-  return db
+  return (await db
     .select({
       id: products.id,
       name: products.name,
@@ -372,13 +376,12 @@ export function getCatalogProducts(q?: string, limit = 1500): CatalogProduct[] {
     )
     .orderBy(desc(products.id))
     .limit(limit)
-    .all()
-    .map((r) => ({
-      id: r.id,
-      name: r.name ?? "",
-      priceYen: r.priceYen,
-      imageUrl: firstImage(r.imageUrls),
-    }));
+    .all()).map((r) => ({
+    id: r.id,
+    name: r.name ?? "",
+    priceYen: r.priceYen,
+    imageUrl: firstImage(r.imageUrls),
+  }));
 }
 
 export interface CatalogProductDetail extends CatalogProduct {
@@ -389,8 +392,10 @@ export interface CatalogProductDetail extends CatalogProduct {
 }
 
 /** Full catalog row for the picker's preview panel (fetched on demand). */
-export function getCatalogProduct(id: number): CatalogProductDetail | null {
-  const p = db.select().from(products).where(eq(products.id, id)).get();
+export async function getCatalogProduct(
+  id: number,
+): Promise<CatalogProductDetail | null> {
+  const p = await db.select().from(products).where(eq(products.id, id)).get();
   if (!p || !p.name) return null;
   const imageUrls = parseJsonArray(p.imageUrls);
   return {
@@ -405,8 +410,8 @@ export function getCatalogProduct(id: number): CatalogProductDetail | null {
   };
 }
 
-export function getStats() {
-  const row = db
+export async function getStats() {
+  const row = await db
     .select({
       orderCount: sql<number>`count(distinct ${orders.id})`,
       itemCount: sql<number>`count(${orderItems.id})`,
@@ -415,12 +420,12 @@ export function getStats() {
     .from(orders)
     .get();
 
-  const spent = db
+  const spent = await db
     .select({ total: sql<number>`coalesce(sum(${orders.totalYen}), 0)` })
     .from(orders)
     .get();
 
-  const items = db
+  const items = await db
     .select({ count: sql<number>`count(*)` })
     .from(orderItems)
     .get();
@@ -432,31 +437,33 @@ export function getStats() {
   };
 }
 
-export function getLastSync() {
+export async function getLastSync() {
   return (
-    db
+    (await db
       .select()
       .from(syncRuns)
       .where(and(eq(syncRuns.status, "success"), eq(syncRuns.kind, "orders")))
       .orderBy(desc(syncRuns.id))
-      .get() ?? null
+      .get()) ?? null
   );
 }
 
 /** Latest catalog sweep (any terminal status) + current catalog size. */
-export function getCatalogState() {
+export async function getCatalogState() {
   const lastRun =
-    db
+    (await db
       .select()
       .from(syncRuns)
       .where(and(eq(syncRuns.kind, "catalog"), eq(syncRuns.status, "success")))
       .orderBy(desc(syncRuns.id))
-      .get() ?? null;
+      .get()) ?? null;
   const count =
-    db
-      .select({ n: sql<number>`count(*)` })
-      .from(products)
-      .where(sql`${products.fetchStatus} = 'ok' and ${products.name} is not null`)
-      .get()?.n ?? 0;
+    (
+      await db
+        .select({ n: sql<number>`count(*)` })
+        .from(products)
+        .where(sql`${products.fetchStatus} = 'ok' and ${products.name} is not null`)
+        .get()
+    )?.n ?? 0;
   return { count, lastSweptAt: lastRun?.finishedAt ?? null };
 }

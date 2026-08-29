@@ -32,7 +32,7 @@ export default async function ProductPage({
   const productId = Number.parseInt(id, 10);
   if (!Number.isInteger(productId)) notFound();
 
-  const { product, snapshot, history } = getProductDetail(productId);
+  const { product, snapshot, history } = await getProductDetail(productId);
   if (!product && !snapshot) notFound();
 
   const isGone = product?.fetchStatus === "not_found";

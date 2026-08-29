@@ -67,8 +67,8 @@ export async function runCatalogSync(
   onProgress?: (p: CatalogProgress) => void,
 ): Promise<CatalogSummary> {
   const config = loadConfig();
-  assertNoActiveRun();
-  const run = beginRun("catalog");
+  await assertNoActiveRun();
+  const run = await beginRun("catalog");
 
   const summary: CatalogSummary = {
     probed: 0,
@@ -85,11 +85,12 @@ export async function runCatalogSync(
     await login(client, config);
 
     const known = new Map<number, string>(
-      db
-        .select({ id: products.id, fetchStatus: products.fetchStatus })
-        .from(products)
-        .all()
-        .map((r) => [r.id, r.fetchStatus]),
+      (
+        await db
+          .select({ id: products.id, fetchStatus: products.fetchStatus })
+          .from(products)
+          .all()
+      ).map((r) => [r.id, r.fetchStatus]),
     );
     let lastLiveId = 0;
     for (const [id, status] of known) {
@@ -105,8 +106,8 @@ export async function runCatalogSync(
 
     let consecutiveErrors = 0;
 
-    const emit = (currentId: number) => {
-      heartbeat(run.id, summary.probed);
+    const emit = async (currentId: number) => {
+      await heartbeat(run.id, summary.probed);
       onProgress?.({
         phase: "catalog",
         probed: summary.probed,
@@ -120,7 +121,8 @@ export async function runCatalogSync(
 
     const insertOk = async (id: number) => {
       const parsed = await fetchProduct(client, id);
-      db.insert(products)
+      await db
+        .insert(products)
         .values({
           id,
           name: parsed.name,
@@ -137,8 +139,9 @@ export async function runCatalogSync(
         .run();
     };
 
-    const insertNotFound = (id: number) => {
-      db.insert(products)
+    const insertNotFound = async (id: number) => {
+      await db
+        .insert(products)
         .values({ id, fetchStatus: "not_found", fetchedAt: now(), updatedAt: now() })
         .onConflictDoNothing()
         .run();
@@ -166,7 +169,8 @@ export async function runCatalogSync(
           );
         }
         // Recorded as error so the next catalog run retries it.
-        db.insert(products)
+        await db
+          .insert(products)
           .values({ id, fetchStatus: "error", fetchedAt: now(), updatedAt: now() })
           .onConflictDoNothing()
           .run();
@@ -177,9 +181,9 @@ export async function runCatalogSync(
     // --- interior pass -----------------------------------------------------
     for (const id of interiorTargets) {
       const result = await probe(id);
-      if (result === "not_found") insertNotFound(id);
+      if (result === "not_found") await insertNotFound(id);
       summary.stoppedAtId = id;
-      emit(id);
+      await emit(id);
     }
 
     // --- frontier pass -----------------------------------------------------
@@ -206,7 +210,7 @@ export async function runCatalogSync(
       const result = await probe(id);
       if (result === "ok") {
         // A higher live id proves the buffered 404s interior — persist them.
-        for (const dead of pending404) insertNotFound(dead);
+        for (const dead of pending404) await insertNotFound(dead);
         pending404 = [];
         consecutive404 = 0;
         summary.maxLiveId = id;
@@ -216,15 +220,15 @@ export async function runCatalogSync(
         consecutive404++;
       }
       // "error": row already recorded; counter untouched.
-      emit(id);
+      await emit(id);
     }
     // Trailing buffer deliberately discarded (see doc comment above).
 
-    completeRun(run.id, { total: summary.probed, processed: summary.probed });
+    await completeRun(run.id, { total: summary.probed, processed: summary.probed });
     onProgress?.({ phase: "done", summary });
     return summary;
   } catch (err) {
-    failRun(run.id, err instanceof Error ? err.message : String(err));
+    await failRun(run.id, err instanceof Error ? err.message : String(err));
     throw err;
   }
 }

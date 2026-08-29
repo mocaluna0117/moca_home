@@ -27,7 +27,8 @@ npm run dev                  # http://localhost:3000
 ## 構成
 
 - **Next.js 16 (App Router) + React 19 + Tailwind v4 + shadcn/ui**
-- **SQLite (`data/app.db`) + Drizzle ORM** — サーバコンポーネントから直接読み取り
+- **SQLite (libSQL) + Drizzle ORM** — ローカルは `data/app.db`、本番は Turso。
+  サーバコンポーネントから直接読み取り
 - **スクレイパー** — `fetch` + `cheerio`(ヘッドレスブラウザ不要)
 
 ```
@@ -50,6 +51,10 @@ src/app/          page(一覧) orders/[id] products/[id] api/sync
 - **同期は冪等** — 詳細未取得(`detail_fetched_at IS NULL`)と未取得商品のみを対象にするため、
   中断しても次回実行で自己修復する。再同期は数秒。
 - リクエスト間隔は既定 1 秒(`SCRAPER_DELAY_MS`)。`robots.txt` の `Disallow: /*.csv$` には触れない。
+
+## デプロイ
+
+Vercel + Turso への移行手順は [DEPLOY.md](DEPLOY.md) を参照。
 
 ## 注意
 

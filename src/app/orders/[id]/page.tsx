@@ -29,12 +29,12 @@ const SHOP_ORIGIN = "https://20and20.pet/store";
 
 export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
   const { id } = await params;
-  const order = getOrder(id);
+  const order = await getOrder(id);
   if (!order) notFound();
 
   const itemTotal = order.items.reduce((n, i) => n + i.quantity, 0);
   const hasActuals = order.receivedTotal > 0 || order.receivedBonuses.length > 0;
-  const catalogState = getCatalogState();
+  const catalogState = await getCatalogState();
   const hasPrediction =
     order.bonuses.totalBonusCount > 0 || order.bonuses.gifts.length > 0;
 

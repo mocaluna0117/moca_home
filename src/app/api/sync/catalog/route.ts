@@ -11,6 +11,18 @@ export const maxDuration = 3600;
 
 /** Streams newline-delimited JSON progress events, last line = summary. */
 export async function POST() {
+  // A full sweep is ~30 min of 1 req/s probing — beyond every serverless
+  // limit. On Vercel this must be run from the CLI against the same database.
+  if (process.env.VERCEL) {
+    return NextResponse.json(
+      {
+        error:
+          "カタログ同期は実行時間が長いためデプロイ環境では実行できません。手元で `npm run sync -- --catalog` を実行してください。",
+      },
+      { status: 501 },
+    );
+  }
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({

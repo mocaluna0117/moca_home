@@ -14,7 +14,7 @@ export async function GET(
   if (!Number.isInteger(productId)) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
-  const item = getCatalogProduct(productId);
+  const item = await getCatalogProduct(productId);
   if (!item) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }

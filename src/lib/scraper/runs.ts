@@ -21,8 +21,8 @@ const now = () => new Date().toISOString();
 const STALE_RUN_MS = 10 * 60 * 1000;
 
 /** Mutual exclusion across BOTH kinds — one polite scraper session at a time. */
-export function assertNoActiveRun(): void {
-  const running = db
+export async function assertNoActiveRun(): Promise<void> {
+  const running = await db
     .select()
     .from(syncRuns)
     .where(eq(syncRuns.status, "running"))
@@ -34,7 +34,8 @@ export function assertNoActiveRun(): void {
       throw new SyncBusyError("同期が既に実行中です");
     }
     // Crashed run — close it out so it stops blocking.
-    db.update(syncRuns)
+    await db
+      .update(syncRuns)
       .set({
         status: "error",
         finishedAt: now(),
@@ -45,8 +46,8 @@ export function assertNoActiveRun(): void {
   }
 }
 
-export function beginRun(kind: RunKind): SyncRun {
-  return db
+export async function beginRun(kind: RunKind): Promise<SyncRun> {
+  return await db
     .insert(syncRuns)
     .values({ kind, startedAt: now(), heartbeatAt: now(), status: "running" })
     .returning()
@@ -54,22 +55,31 @@ export function beginRun(kind: RunKind): SyncRun {
 }
 
 /** One tiny WAL write per unit of progress (~1/s) — negligible. */
-export function heartbeat(runId: number, processed: number): void {
-  db.update(syncRuns)
+export async function heartbeat(runId: number, processed: number): Promise<void> {
+  await db
+    .update(syncRuns)
     .set({ heartbeatAt: now(), ordersProcessed: processed })
     .where(eq(syncRuns.id, runId))
     .run();
 }
 
-export function setRunTotal(runId: number, total: number | null): void {
-  db.update(syncRuns).set({ totalOrders: total }).where(eq(syncRuns.id, runId)).run();
+export async function setRunTotal(
+  runId: number,
+  total: number | null,
+): Promise<void> {
+  await db
+    .update(syncRuns)
+    .set({ totalOrders: total })
+    .where(eq(syncRuns.id, runId))
+    .run();
 }
 
-export function completeRun(
+export async function completeRun(
   runId: number,
   patch: { total?: number | null; processed?: number },
-): void {
-  db.update(syncRuns)
+): Promise<void> {
+  await db
+    .update(syncRuns)
     .set({
       status: "success",
       finishedAt: now(),
@@ -81,15 +91,17 @@ export function completeRun(
 }
 
 /** Mark every running row failed — used by the CLI's SIGINT handler. */
-export function failActiveRuns(message: string): void {
-  db.update(syncRuns)
+export async function failActiveRuns(message: string): Promise<void> {
+  await db
+    .update(syncRuns)
     .set({ status: "error", finishedAt: now(), errorMessage: message })
     .where(eq(syncRuns.status, "running"))
     .run();
 }
 
-export function failRun(runId: number, message: string): void {
-  db.update(syncRuns)
+export async function failRun(runId: number, message: string): Promise<void> {
+  await db
+    .update(syncRuns)
     .set({ status: "error", finishedAt: now(), errorMessage: message })
     .where(eq(syncRuns.id, runId))
     .run();

@@ -26,7 +26,7 @@ export default async function HomePage({
   const rawQ = Array.isArray(params.q) ? params.q[0] : params.q;
   const q = rawQ?.trim() || undefined;
 
-  const stats = getStats();
+  const stats = await getStats();
 
   if (stats.orderCount === 0) {
     return (
@@ -41,9 +41,12 @@ export default async function HomePage({
     );
   }
 
-  const orders = view === "orders" ? getOrders(q) : [];
-  const catalogSynced = getCatalogState().count > 100;
-  const productSummaries = view === "products" ? getProductSummaries(q) : [];
+  const [orders, catalogState, productSummaries] = await Promise.all([
+    view === "orders" ? getOrders(q) : Promise.resolve([]),
+    getCatalogState(),
+    view === "products" ? getProductSummaries(q) : Promise.resolve([]),
+  ]);
+  const catalogSynced = catalogState.count > 100;
   const isEmptyResult =
     view === "orders" ? orders.length === 0 : productSummaries.length === 0;
 

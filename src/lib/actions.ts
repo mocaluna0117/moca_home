@@ -27,9 +27,10 @@ const MAX_ROWS = 20;
  * snapshot's authority is server-side: when productId is set, the label is
  * re-derived from products.name and the client-sent label is ignored.
  */
-function resolveRow(row: DraftRowInput):
+async function resolveRow(row: DraftRowInput): Promise<
   | { ok: true; value: { productId: number | null; label: string; quantity: number; note: string | null } }
-  | { ok: false; error: string } {
+  | { ok: false; error: string }
+> {
   if (!Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 99) {
     return { ok: false, error: "数量は1〜99の整数で入力してください" };
   }
@@ -39,7 +40,7 @@ function resolveRow(row: DraftRowInput):
     if (!Number.isInteger(row.productId)) {
       return { ok: false, error: "商品IDが不正です" };
     }
-    const product = db
+    const product = await db
       .select({ name: products.name })
       .from(products)
       .where(eq(products.id, row.productId))
@@ -71,7 +72,7 @@ export async function saveReceivedBonuses(
   rows: DraftRowInput[],
 ): Promise<ActionResult> {
   try {
-    const order = db
+    const order = await db
       .select({ id: orders.id })
       .from(orders)
       .where(eq(orders.id, orderId))
@@ -89,26 +90,28 @@ export async function saveReceivedBonuses(
       note: string | null;
     }> = [];
     for (const row of rows) {
-      const r = resolveRow(row);
+      const r = await resolveRow(row);
       if (!r.ok) return r;
       resolved.push({ id: row.id, ...r.value });
     }
 
-    db.transaction((tx) => {
+    await db.transaction(async (tx) => {
       const existingIds = new Set(
-        tx
-          .select({ id: receivedBonuses.id })
-          .from(receivedBonuses)
-          .where(eq(receivedBonuses.orderId, orderId))
-          .all()
-          .map((r) => r.id),
+        (
+          await tx
+            .select({ id: receivedBonuses.id })
+            .from(receivedBonuses)
+            .where(eq(receivedBonuses.orderId, orderId))
+            .all()
+        ).map((r) => r.id),
       );
       const keptIds = new Set<number>();
 
       for (const row of resolved) {
         if (row.id !== undefined && existingIds.has(row.id)) {
           keptIds.add(row.id);
-          tx.update(receivedBonuses)
+          await tx
+            .update(receivedBonuses)
             .set({
               productId: row.productId,
               label: row.label,
@@ -119,7 +122,8 @@ export async function saveReceivedBonuses(
             .where(eq(receivedBonuses.id, row.id))
             .run();
         } else {
-          tx.insert(receivedBonuses)
+          await tx
+            .insert(receivedBonuses)
             .values({
               orderId,
               productId: row.productId,
@@ -135,7 +139,7 @@ export async function saveReceivedBonuses(
 
       for (const id of existingIds) {
         if (!keptIds.has(id)) {
-          tx.delete(receivedBonuses).where(eq(receivedBonuses.id, id)).run();
+          await tx.delete(receivedBonuses).where(eq(receivedBonuses.id, id)).run();
         }
       }
     });
@@ -157,13 +161,13 @@ export async function deleteReceivedBonus(
   orderId: string,
 ): Promise<ActionResult> {
   try {
-    const row = db
+    const row = await db
       .select({ id: receivedBonuses.id })
       .from(receivedBonuses)
       .where(eq(receivedBonuses.id, id))
       .get();
     if (!row) return { ok: false, error: "記録が見つかりません" };
-    db.delete(receivedBonuses).where(eq(receivedBonuses.id, id)).run();
+    await db.delete(receivedBonuses).where(eq(receivedBonuses.id, id)).run();
     revalidatePath(`/orders/${orderId}`);
     revalidatePath("/");
     return { ok: true };
