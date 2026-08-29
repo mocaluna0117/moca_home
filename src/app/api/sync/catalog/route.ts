@@ -5,9 +5,10 @@ import { SyncBusyError } from "@/lib/scraper/runs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// A first sweep probes ~1,500 ids at 1 req/s. (Only enforced on serverless
-// hosts — the CLI `npm run sync -- --catalog` is the recommended first run.)
-export const maxDuration = 3600;
+// The sweep never actually runs here — on Vercel this route returns 501 and
+// the real run is the CLI (`npm run sync:prod -- --catalog`). Keep the value
+// inside the Hobby plan's 1–300s ceiling so the build is accepted.
+export const maxDuration = 60;
 
 /** Streams newline-delimited JSON progress events, last line = summary. */
 export async function POST() {
