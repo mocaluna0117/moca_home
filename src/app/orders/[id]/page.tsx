@@ -8,6 +8,7 @@ import {
   formatRuleShort,
 } from "@/components/bonus-badge";
 import { ImageWithFallback } from "@/components/image-with-fallback";
+import { ProductName } from "@/components/product-name";
 import { ReceivedBonusSection } from "@/components/received-bonus-section";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -88,11 +89,11 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                         href={`/products/${item.productId}`}
                         className="text-sm leading-snug hover:underline"
                       >
-                        {item.productName}
+                        <ProductName name={item.productName} />
                       </Link>
                     ) : (
                       <span className="text-sm leading-snug">
-                        {item.productName}
+                        <ProductName name={item.productName} />
                       </span>
                     )}
                     {item.bonus.activated && !item.bonus.pooled && (
@@ -155,10 +156,12 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                         href={`/products/${r.productId}`}
                         className="text-sm leading-snug hover:underline"
                       >
-                        {r.label}
+                        <ProductName name={r.label} />
                       </Link>
                     ) : (
-                      <span className="text-sm leading-snug">{r.label}</span>
+                      <span className="text-sm leading-snug">
+                        <ProductName name={r.label} />
+                      </span>
                     )}
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <Badge variant="secondary" className="font-normal">

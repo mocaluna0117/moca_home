@@ -15,6 +15,7 @@ import { toast } from "sonner";
 
 import { saveReceivedBonuses, type DraftRowInput } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
+import { ProductName } from "@/components/product-name";
 import {
   Dialog,
   DialogClose,
@@ -242,7 +243,7 @@ export function ReceivedBonusDialog({
                   <div className="flex items-start gap-2">
                     <Thumb src={row.imageUrl} alt="" />
                     <span className="flex-1 text-sm leading-snug break-words">
-                      {row.label}
+                      <ProductName name={row.label} />
                     </span>
                     <Button
                       variant="ghost"
@@ -410,7 +411,7 @@ function CatalogPicker({
             >
               <Thumb src={c.imageUrl} alt="" />
               <span className="flex-1 text-sm leading-snug break-words">
-                {c.name}
+                <ProductName name={c.name} />
               </span>
               <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                 {formatYen(c.priceYen)}
@@ -532,7 +533,9 @@ function ProductPreview({
               )}
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
-              <p className="text-sm leading-snug break-words">{item.name}</p>
+              <p className="text-sm leading-snug break-words">
+                <ProductName name={item.name} />
+              </p>
               <p className="font-semibold tabular-nums">
                 {formatYen(item.priceYen)}
                 <span className="ml-1 text-xs font-normal text-muted-foreground">

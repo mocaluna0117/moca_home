@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { formatRuleShort } from "@/components/bonus-badge";
+import { ProductName } from "@/components/product-name";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -44,7 +45,9 @@ export function ProductCard({ product }: { product: ProductSummary }) {
         )}
       </div>
       <CardContent className="flex flex-1 flex-col gap-2 p-3">
-        <p className="line-clamp-3 text-sm leading-snug">{product.name}</p>
+        <p className="line-clamp-3 text-sm leading-snug">
+          <ProductName name={product.name} />
+        </p>
         <div className="mt-auto space-y-1">
           <p className="font-semibold tabular-nums">
             {formatYen(product.latestUnitPriceYen)}

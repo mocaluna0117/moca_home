@@ -2,6 +2,7 @@ import { Gift } from "lucide-react";
 import Link from "next/link";
 
 import { ImageWithFallback } from "@/components/image-with-fallback";
+import { ProductName } from "@/components/product-name";
 import { ReceivedBonusDialog } from "@/components/received-bonus-dialog";
 import { ReceivedBonusDeleteButton } from "@/components/received-bonus-delete-button";
 import { formatDate } from "@/lib/format";
@@ -70,10 +71,12 @@ export function ReceivedBonusSection({
                     href={`/products/${r.productId}`}
                     className="line-clamp-2 text-sm leading-snug hover:underline"
                   >
-                    {r.label}
+                    <ProductName name={r.label} />
                   </Link>
                 ) : (
-                  <p className="line-clamp-2 text-sm leading-snug">{r.label}</p>
+                  <p className="line-clamp-2 text-sm leading-snug">
+                    <ProductName name={r.label} />
+                  </p>
                 )}
                 {r.note && (
                   <p className="mt-0.5 text-xs text-muted-foreground">{r.note}</p>

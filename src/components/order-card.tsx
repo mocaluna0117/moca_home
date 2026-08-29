@@ -2,6 +2,7 @@ import { Gift } from "lucide-react";
 import Link from "next/link";
 
 import { BonusBadge, formatBonusSummary } from "@/components/bonus-badge";
+import { ProductName } from "@/components/product-name";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { ReceivedBonusDialog } from "@/components/received-bonus-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -88,11 +89,11 @@ export function OrderCard({
                     href={`/products/${item.productId}`}
                     className="relative z-20 line-clamp-2 text-sm leading-snug hover:underline"
                   >
-                    {item.productName}
+                    <ProductName name={item.productName} />
                   </Link>
                 ) : (
                   <p className="line-clamp-2 text-sm leading-snug">
-                    {item.productName}
+                    <ProductName name={item.productName} />
                   </p>
                 )}
                 <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
@@ -142,10 +143,12 @@ export function OrderCard({
                     href={`/products/${r.productId}`}
                     className="relative z-20 line-clamp-2 text-sm leading-snug hover:underline"
                   >
-                    {r.label}
+                    <ProductName name={r.label} />
                   </Link>
                 ) : (
-                  <p className="line-clamp-2 text-sm leading-snug">{r.label}</p>
+                  <p className="line-clamp-2 text-sm leading-snug">
+                    <ProductName name={r.label} />
+                  </p>
                 )}
                 <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
                   <Badge variant="secondary" className="font-normal">

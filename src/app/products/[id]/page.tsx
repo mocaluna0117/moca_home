@@ -7,6 +7,7 @@ import {
   formatRuleLong,
 } from "@/components/bonus-badge";
 import { ImageWithFallback } from "@/components/image-with-fallback";
+import { ProductName } from "@/components/product-name";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -71,7 +72,9 @@ export default async function ProductPage({
         </div>
 
         <div className="flex flex-col gap-3">
-          <h1 className="text-lg leading-snug font-semibold">{name}</h1>
+          <h1 className="text-lg leading-snug font-semibold">
+            <ProductName name={name} dim={false} />
+          </h1>
           <p className="text-xl font-semibold tabular-nums">
             {formatYen(priceYen)}
             <span className="ml-1 text-xs font-normal text-muted-foreground">
