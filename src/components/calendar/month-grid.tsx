@@ -59,23 +59,36 @@ export function MonthGridView({
             <div
               key={cell.date}
               className={cn(
-                "flex min-h-28 flex-col gap-1 border-r border-b p-1.5 last:border-r-0",
+                "relative flex min-h-28 flex-col gap-1 border-r border-b p-1.5 last:border-r-0",
                 !cell.inMonth && "bg-muted/30",
-                isToday && "bg-accent/40",
+                // --accent はほぼ白なので、今日は枠線で示す（無彩色パレットで
+                // 背景だけだと視認できない）
+                isToday && "bg-accent ring-2 ring-foreground/70 ring-inset",
               )}
             >
               <div className="flex items-center gap-1">
                 <span
                   className={cn(
                     "text-xs tabular-nums",
-                    !cell.inMonth && "text-muted-foreground/50",
-                    cell.inMonth && cell.weekday === 0 && "text-destructive",
-                    cell.inMonth && cell.weekday !== 0 && "text-muted-foreground",
-                    isToday && "font-semibold text-foreground",
+                    isToday
+                      ? // 反転した丸バッジ。色を使わずに一目で分かる
+                        "inline-flex size-5 items-center justify-center rounded-full bg-foreground font-semibold text-background"
+                      : [
+                          !cell.inMonth && "text-muted-foreground/50",
+                          cell.inMonth && cell.weekday === 0 && "text-destructive",
+                          cell.inMonth &&
+                            cell.weekday !== 0 &&
+                            "text-muted-foreground",
+                        ],
                   )}
                 >
                   {cell.day}
                 </span>
+                {isToday && (
+                  <span className="text-[10px] font-medium text-foreground">
+                    今日
+                  </span>
+                )}
                 {d && d.vaccines.length > 0 && (
                   <Syringe
                     className="size-3 text-muted-foreground"
@@ -165,18 +178,23 @@ export function MonthAgendaView({
           key={cell.date}
           className={cn(
             "rounded-lg border p-3",
-            cell.date === today && "border-foreground/25",
+            cell.date === today && "ring-2 ring-foreground/70 ring-inset",
           )}
         >
           <div className="mb-2 flex items-center gap-2">
             <span
               className={cn(
                 "text-sm font-medium tabular-nums",
-                cell.weekday === 0 && "text-destructive",
+                cell.date !== today && cell.weekday === 0 && "text-destructive",
               )}
             >
               {cell.day}日（{weekdayLabel(cell.weekday)}）
             </span>
+            {cell.date === today && (
+              <span className="rounded-full bg-foreground px-2 py-0.5 text-[10px] font-medium text-background">
+                今日
+              </span>
+            )}
             {d.vaccines.length > 0 && (
               <Syringe className="size-3.5 text-muted-foreground" aria-hidden="true" />
             )}
