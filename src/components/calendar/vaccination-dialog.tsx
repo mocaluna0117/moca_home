@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import {
   attachVaccinationPhoto,
   detachVaccinationPhoto,
+  discardUnattachedPhoto,
   saveVaccination,
 } from "@/lib/actions-log";
 import type { AiProvider } from "@/lib/ai";
@@ -207,12 +208,20 @@ export function VaccinationDialog({
     };
 
     // 新規で日付に触っていなければ初期値（today）は空欄と同じ
-    put("date", "接種日", fields.date, dateIsFree ? "" : date, setDate);
+    put("date", "接種日", fields.date, dateIsFree ? "" : date, (v) => {
+      setDate(v);
+      // 入れたあとは「埋まっている」扱いにする。そうしないと2枚目の写真で
+      // 黙って上書きされ、どちらが採用されたのか分からなくなる
+      setDateTouched(true);
+    });
     put("name", "ワクチン名", fields.name, name, setName);
     put("clinic", "動物病院", fields.clinic, clinic, setClinic);
     put("nextDue", "次回予定日", fields.nextDueDate, nextDue, setNextDue);
 
-    if (conflicts.length > 0) setSuggestions(conflicts);
+    // 今回の読み取り結果で必ず置き換える。条件付きにすると、衝突の無い
+    // 2枚目を入れたときに前回の提案が残り、無関係な値に「置き換える」が
+    // 出たままになる
+    setSuggestions(conflicts);
 
     if (filled.length === 0 && conflicts.length === 0) {
       toast.info("証明書から読み取れる項目がありませんでした", {
@@ -334,8 +343,12 @@ export function VaccinationDialog({
       }
 
       let failed = 0;
-      for (const item of pending) {
+      // ここで処理する分だけを控える。保存中に足された写真を巻き込んで
+      // 消さないため（下の後片付けで使う）
+      const processing = pending;
+      for (const item of processing) {
         setUploading(0);
+        let uploaded: { pathname: string } | null = null;
         try {
           const { body, contentType, width, height } = await prepare(item.file);
           const blob = await upload(`vaccinations/${crypto.randomUUID()}.jpg`, body, {
@@ -346,6 +359,7 @@ export function VaccinationDialog({
             handleUploadUrl: "/api/blob/upload",
             onUploadProgress: ({ percentage }) => setUploading(percentage),
           });
+          uploaded = { pathname: blob.pathname };
           const attached = await attachVaccinationPhoto(res.id, {
             url: blob.url,
             pathname: blob.pathname,
@@ -354,9 +368,15 @@ export function VaccinationDialog({
             width,
             height,
           });
-          if (!attached.ok) failed++;
+          if (!attached.ok) {
+            failed++;
+            // Blob には載ったのに紐づけ先が無い状態を残さない。
+            // DB行が無いので、あとから消す手段が無くなる
+            await discardUnattachedPhoto(blob.pathname);
+          }
         } catch {
           failed++;
+          if (uploaded) await discardUnattachedPhoto(uploaded.pathname);
         }
       }
       setUploading(null);
@@ -369,9 +389,11 @@ export function VaccinationDialog({
         toast.success(record ? "記録を更新しました" : "接種を記録しました");
       }
       setOpen(false);
+      // 保存中に足された写真は残す。処理した分だけを解放する
       setPending((prev) => {
-        resetPending(prev);
-        return [];
+        const done = new Set(processing.map((x) => x.key));
+        resetPending(processing);
+        return prev.filter((x) => !done.has(x.key));
       });
     });
   }
@@ -550,7 +572,12 @@ export function VaccinationDialog({
                     accept="image/*"
                     capture="environment"
                     className="sr-only"
-                    onChange={(e) => handleFiles(e.target.files)}
+                    onChange={(e) => {
+                      handleFiles(e.target.files);
+                      // 値を空に戻す。戻さないと、同じ写真をもう一度選んでも
+                      // change が発火しない（撮り直しでよく起きる）
+                      e.target.value = "";
+                    }}
                   />
                 </label>
                 <label className="cursor-pointer">
@@ -563,7 +590,12 @@ export function VaccinationDialog({
                     accept="image/*"
                     multiple
                     className="sr-only"
-                    onChange={(e) => handleFiles(e.target.files)}
+                    onChange={(e) => {
+                      handleFiles(e.target.files);
+                      // 値を空に戻す。戻さないと、同じ写真をもう一度選んでも
+                      // change が発火しない（撮り直しでよく起きる）
+                      e.target.value = "";
+                    }}
                   />
                 </label>
               </div>

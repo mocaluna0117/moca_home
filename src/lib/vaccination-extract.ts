@@ -28,9 +28,13 @@ const ERAS: ReadonlyArray<{ keys: readonly string[]; base: number }> = [
 /** 次回予定日が今日から何年先までなら妥当か */
 const MAX_FUTURE_YEARS = 15;
 
+// toHalfWidth が知っているダッシュと同じ集合にしておく。数字に挟まれない
+// ダッシュは半角化されないので、全角のままここに無いと値として通ってしまう
 const PLACEHOLDERS = new Set([
   "",
   "-",
+  "－",
+  "−",
   "ー",
   "―",
   "‐",
@@ -60,20 +64,20 @@ const PII_PATTERNS: readonly RegExp[] = [
   /〒/,
   /@/,
   /\+81/,
-  // 電話。日本の表記ゆれが広いので、ラベル・括弧書き・連続数字を全部見る
-  /TEL|Tel|tel|℡|電話|FAX|Fax|fax/,
+  // 電話。語境界を要求する。境界が無いと "Pet Hotel" の "tel" に当たる
+  /\b(?:TEL|FAX)\b/i,
+  /℡|電話番号|電話|ＴＥＬ/,
   /\d{2,4}\s*[(（]\s*\d{2,4}\s*[)）]\s*\d{3,4}/,
   /\d{10,11}/,
-  // 住所。「東京都世田谷区」「神奈川県横浜市」のような都道府県＋市区町村と、
-  // 「4丁目1番8号」「2-1-5」のような番地表記
-  /[都道府県].{0,15}[市区町村郡]/,
-  /[市区町村郡][^\s]{0,10}\d/,
+  // 住所。施設名の塊だけを見るようになったので、地名を含む正当な名前
+  // （府中市どうぶつ医療センター など）を巻き込まないよう番地の形に絞る
   /\d+\s*丁目|\d+\s*番地|\d+\s*番\s*\d+\s*号/,
   /\d+-\d+-\d+/,
-  // 氏名が併記される形
-  /院長|副院長|獣医師|担当医|飼い主|所有者/,
-  /[様殿]/,
-  /先生/,
+  // 氏名が併記される形。「獣医師会」「御殿場」「殿町」のような
+  // 正当な名前を巻き込まないよう、語の切れ目を要求する
+  /院長|副院長|獣医師名|担当医|飼い主|所有者/,
+  /(?:^|\s)[^\s]{1,10}[様殿](?:$|\s)/,
+  /先生(?:$|\s)/,
 ];
 
 /**
@@ -99,11 +103,18 @@ interface Ymd {
   day: number | null;
 }
 
-/** 文字列中に日付らしき並びがいくつあるか。2つ以上なら曖昧とみなす */
+/**
+ * 文字列中に日付らしき並びがいくつあるか。2つ以上なら曖昧とみなす。
+ *
+ * 「日」まで数えること。月までで比べると
+ * 「接種 2026-05-03 次回 2026-05-20」が同じ "2026-05" に潰れて
+ * 1件と数えられ、先頭が黙って採られていた。
+ */
 function countDateCandidates(s: string): number {
   const found = new Set<string>();
-  const wareki = /(?:令和|令|平成|平|[RrHh])\s*(?:元|\d{1,2})\s*(?:年|[./-])\s*\d{1,2}/g;
-  const seireki = /\d{4}\s*(?:年|[./-])\s*\d{1,2}/g;
+  const wareki =
+    /(?:令和|令|平成|平|[RrHh])\s*(?:元|\d{1,2})\s*(?:年|[./-])\s*\d{1,2}(?:\s*(?:月|[./-])\s*\d{1,2}\s*日?)?/g;
+  const seireki = /\d{4}\s*(?:年|[./-])\s*\d{1,2}(?:\s*(?:月|[./-])\s*\d{1,2}\s*日?)?/g;
   for (const re of [wareki, seireki]) {
     for (const m of s.matchAll(re)) found.add(m[0].replace(/\s+/g, ""));
   }
@@ -212,27 +223,44 @@ function isPlaceholder(input: unknown): boolean {
 const FACILITY =
   "(?:動物病院|どうぶつ病院|獣医科病院|獣医科医院|動物医療センター|動物医療C|" +
   "アニマルクリニック|アニマルホスピタル|ペットクリニック|ペットホスピタル|" +
-  "動物クリニック|動物診療所|クリニック|診療所|医院|病院|ホスピタル|" +
+  "動物クリニック|動物診療所|どうぶつ医療センター|ペット医療センター|医療センター|" +
+  "クリニック|診療所|医院|病院|ホスピタル|" +
   "Animal Hospital|Animal Clinic|Pet Clinic|Veterinary Clinic|Veterinary Hospital)";
 const FACILITY_RE = new RegExp(`^.*?${FACILITY}`, "i");
 
 /** 施設名のうしろに続いてよい長さ。「〜クリニック代々木」の「代々木」を残すため */
 const BRANCH_MAX = 8;
 
+/**
+ * 先頭にくっついた住所らしき語。「東京都渋谷区 さくら動物病院」の
+ * 前半だけを落とすために使う（空白で機械的に切ると
+ * "Sakura Animal Hospital" が "Hospital" になってしまう）。
+ */
+const ADDRESS_TOKEN =
+  /^(?:〒?\d{3}-?\d{4}|[^\s]*[都道府県][^\s]{0,15}[市区町村郡][^\s]*|[^\s]*\d+\s*丁目[^\s]*)$/;
+
 export function extractClinicName(input: unknown): string | null {
   if (typeof input !== "string") return null;
-  const text = toHalfWidth(input)
+  const cleaned = toHalfWidth(input)
     .replace(/[「」『』【】]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  if (isPlaceholder(text)) return null;
+  if (isPlaceholder(cleaned)) return null;
 
-  const head = text.match(FACILITY_RE)?.[0]?.trim();
+  // 先頭の住所を落とす。2語以上あるときだけ動かすので、
+  // 「府中市どうぶつ医療センター」のような1語の名前は削らない
+  const parts = cleaned.split(" ");
+  while (parts.length > 1 && ADDRESS_TOKEN.test(parts[0])) parts.shift();
+  const text = parts.join(" ");
+
+  const matched = FACILITY_RE.exec(text)?.[0];
   // 施設を表す語が無ければ採らない。任意項目なので、誤った値を入れるより
   // 空欄のまま人に打たせるほうがよい
+  if (!matched) return null;
+  const head = matched.trim();
   if (!head) return null;
 
-  const tail = text.slice(head.length);
+  const tail = text.slice(matched.length);
   // 空白や区切りで離れて続くものは、氏名・住所とみなして落とす。
   // くっついて続く短い語（分院・地名）は名前の一部として残す。
   const keepTail =
@@ -240,7 +268,7 @@ export function extractClinicName(input: unknown): string | null {
     !/^[\s/、,・|｜:：]/.test(tail) &&
     tail.length <= BRANCH_MAX &&
     !/\d/.test(tail);
-  const value = keepTail ? text.slice(0, head.length + tail.length) : head;
+  const value = keepTail ? (matched + tail).trim() : head;
 
   if (value.length > 100) return null;
   return PII_PATTERNS.some((re) => re.test(value)) ? null : value;

@@ -167,6 +167,15 @@ describe("normalizeExtraction — 全体", () => {
     assert.deepEqual(r.dropped, []);
   });
 
+  it("全角のダッシュもプレースホルダとして落とす", () => {
+    // 数字に挟まれないダッシュは半角化しないので、全角のまま判定する必要がある
+    for (const v of ["－", "−", "ー", "―", "‐", "-"]) {
+      const r = normalizeExtraction({ clinic: v, name: v }, TODAY);
+      assert.equal(r.name, null, v);
+      assert.equal(r.clinic, null, v);
+    }
+  });
+
   it("鉤括弧と余分な空白を落とす", () => {
     const r = normalizeExtraction({ name: "「6種混合  ワクチン」" }, TODAY);
     assert.equal(r.name, "6種混合 ワクチン");
@@ -225,6 +234,8 @@ describe("実際の証明書で起きる読み取り事故", () => {
 
   it("併記された住所・電話・氏名を落とし、施設名だけを残す", () => {
     const cases: Array<[string, string | null]> = [
+      ["さくら動物病院 4丁目1番8号", "さくら動物病院"],
+      ["東京都渋谷区 さくら動物病院", "さくら動物病院"],
       ["さくら動物病院 東京都世田谷区北沢2-1-5", "さくら動物病院"],
       ["みどり動物病院 神奈川県横浜市港北区日吉4丁目1番8号", "みどり動物病院"],
       ["さくら動物病院 TEL 03(1234)5678", "さくら動物病院"],
@@ -237,8 +248,6 @@ describe("実際の証明書で起きる読み取り事故", () => {
       ["さくら動物病院 田中太郎", "さくら動物病院"],
       ["さくら動物病院 山田", "さくら動物病院"],
       ["Sakura Animal Hospital / Owner: Daiki Kimura", "Sakura Animal Hospital"],
-      // 住所が先に来る場合は施設名まで含んでしまうので、まるごと捨てる
-      ["東京都渋谷区 さくら動物病院", null],
     ];
     for (const [input, want] of cases) {
       assert.equal(normalizeExtraction({ clinic: input }, TODAY).clinic, want, input);
@@ -259,6 +268,13 @@ describe("実際の証明書で起きる読み取り事故", () => {
       "北海道大学動物医療センター",
       "犬猫病院ハロー",
       "さくら動物病院分院",
+      // 地名・団体名が入る正当な形。過検知で落としていた
+      "御殿場どうぶつ病院",
+      "殿町動物病院",
+      "獣医師会 夜間動物病院",
+      "府中市どうぶつ医療センター",
+      "Pet Hotel & Animal Clinic",
+      "Sakura Animal Hospital",
     ]) {
       assert.equal(normalizeExtraction({ clinic: v }, TODAY).clinic, v, v);
     }
@@ -267,6 +283,10 @@ describe("実際の証明書で起きる読み取り事故", () => {
   it("日付が2つ以上ある文字列は採らない（次回を接種日にしない）", () => {
     assert.equal(d("接種日 2025/5/3 次回 2026/5/3"), null);
     assert.equal(d("令和7年5月3日 次回 令和8年5月3日"), null);
+    // 月が同じで日だけ違う組み合わせ。月までで数えていた頃は
+    // 同じ候補に潰れて先頭が黙って採られていた
+    assert.equal(d("接種 2026-05-03 次回 2026-05-20"), null);
+    assert.equal(d("令和8年5月3日 令和8年5月20日"), null);
   });
 
   it("同じ日付が2回書かれているだけなら採る", () => {

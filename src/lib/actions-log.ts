@@ -418,6 +418,39 @@ export async function attachVaccinationPhoto(
   }
 }
 
+/**
+ * 記録に紐づかなかった写真を Blob から消す。
+ *
+ * ブラウザ → Blob の直アップロードは成功したのに、そのあとの
+ * attachVaccinationPhoto が失敗する経路がある（モバイルの通信断が典型）。
+ * そのままだと DB に行が無いので detach でも delete でも消せず、氏名・住所が
+ * 写った画像が private ストアに永久に残る。
+ *
+ * **DB が参照している pathname は絶対に消さない。** クライアント由来の値を
+ * 受け取るので、この一行が他の記録の証明書を巻き添えにしない保証になる。
+ */
+export async function discardUnattachedPhoto(pathname: string): Promise<ActionResult> {
+  try {
+    if (typeof pathname !== "string" || !pathname.startsWith(BLOB_PREFIX)) {
+      return { ok: false, error: "写真の保存先が不正です" };
+    }
+    const linked = await db
+      .select({ id: vaccinationPhotos.id })
+      .from(vaccinationPhotos)
+      .where(eq(vaccinationPhotos.pathname, pathname))
+      .get();
+    if (linked) return { ok: false, error: "この写真は記録に紐づいています" };
+
+    await deleteBlobs([pathname]);
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "写真の削除に失敗しました",
+    };
+  }
+}
+
 export async function detachVaccinationPhoto(photoId: number): Promise<ActionResult> {
   try {
     const photo = await db
