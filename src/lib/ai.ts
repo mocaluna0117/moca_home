@@ -185,32 +185,34 @@ const GEMINI_SCHEMA = {
   },
 } as const;
 
-/** 使える flash 系モデルを1つ選ぶ。モデル名が変わっても自力で復帰するため */
-async function pickGeminiModel(
-  ai: { models: { list: () => Promise<unknown> } },
-): Promise<string | null> {
+/**
+ * この鍵で generateContent が使えるモデル名を、優先順に並べて返す。
+ *
+ * モデル名は時期で入れ替わる。既定値が 404 になっても、一覧を引いて
+ * 自力で使えるものに乗り換えられるようにしておく。
+ * （SDK の models.list() は queryBase: true が既定なので基盤モデルが返る）
+ */
+async function listGeminiModels(ai: {
+  models: { list: () => Promise<AsyncIterable<{ name?: string; supportedActions?: string[] }>> };
+}): Promise<string[]> {
+  const usable: string[] = [];
   try {
-    const pager = (await ai.models.list()) as AsyncIterable<{
-      name?: string;
-      supportedActions?: string[];
-    }>;
-    const usable: string[] = [];
-    for await (const m of pager) {
+    for await (const m of await ai.models.list()) {
       const name = (m.name ?? "").replace(/^models\//, "");
       if (!name) continue;
       if (m.supportedActions && !m.supportedActions.includes("generateContent")) continue;
       usable.push(name);
     }
-    return (
-      usable.find((n) => n.includes("flash") && !n.includes("lite")) ??
-      usable.find((n) => n.includes("flash")) ??
-      usable.find((n) => n.includes("pro")) ??
-      usable[0] ??
-      null
-    );
   } catch {
-    return null;
+    return [];
   }
+  const score = (n: string) => {
+    if (n.includes("flash") && !n.includes("lite") && !n.includes("image")) return 0;
+    if (n.includes("flash")) return 1;
+    if (n.includes("pro")) return 2;
+    return 3;
+  };
+  return usable.sort((a, b) => score(a) - score(b));
 }
 
 async function extractWithGemini(
@@ -265,8 +267,11 @@ async function extractWithGemini(
   let model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
   let withSchema = true;
   let lastStatus: number | undefined;
+  const tried = new Set<string>();
+  let candidates: string[] | null = null;
 
-  for (let tries = 0; tries < 3; tries++) {
+  for (let attempts = 0; attempts < 5; attempts++) {
+    tried.add(model);
     try {
       const res = await attempt(model, withSchema);
       const parsed = pickJson(res.text ?? "");
@@ -283,20 +288,36 @@ async function extractWithGemini(
       console.error(
         `[vaccination-extract] Gemini status=${err.status} model=${model} schema=${withSchema} ${String(err.message).slice(0, 200)}`,
       );
+
       if (err.status === 400 && withSchema) {
         // スキーマ指定が通らない環境。形は normalizeExtraction が担保する
         withSchema = false;
         continue;
       }
-      if (err.status === 404) {
-        const found = await pickGeminiModel(ai);
-        if (found && found !== model) {
-          console.error(`[vaccination-extract] モデルを ${found} に切り替えて再試行`);
-          model = found;
+
+      if (err.status === 404 || (err.status === 400 && !withSchema)) {
+        // モデル名が違う。一覧を引いて、まだ試していないものに乗り換える
+        candidates ??= await listGeminiModels(ai);
+        const next = candidates.find((n) => !tried.has(n));
+        if (next) {
+          console.error(`[vaccination-extract] モデルを ${next} に切り替えて再試行`);
+          model = next;
+          withSchema = true;
           continue;
         }
-        return { ok: false, reason: "upstream", detail: `model-not-found ${model}` };
+        // 使えるモデル名を画面に出す。名前は機微情報ではないので、
+        // これが分かれば GEMINI_MODEL に設定して確実に直せる
+        const hint =
+          candidates.length > 0
+            ? `使えるモデル: ${candidates.slice(0, 3).join(", ")}`
+            : "モデル一覧を取得できず";
+        return {
+          ok: false,
+          reason: "upstream",
+          detail: `model-not-found ${model} / ${hint}`,
+        };
       }
+
       return {
         ok: false,
         reason: classify(err.status),
