@@ -29,16 +29,16 @@ export async function GET(
   }
 
   try {
-    const { head } = await import("@vercel/blob");
-    // private ストアでは downloadUrl に短命の署名が付く
-    const meta = await head(photo.url);
-    const upstream = await fetch(meta.downloadUrl, { cache: "no-store" });
-    if (!upstream.ok || !upstream.body) {
+    const { get } = await import("@vercel/blob");
+    // private ストアの読み出しはトークンが要る。get() がそれを担う。
+    const result = await get(photo.pathname, { access: "private" });
+    if (!result || result.statusCode !== 200) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
-    return new NextResponse(upstream.body, {
+    return new NextResponse(result.stream, {
       headers: {
-        "Content-Type": photo.contentType ?? meta.contentType ?? "image/jpeg",
+        "Content-Type":
+          photo.contentType ?? result.blob.contentType ?? "image/jpeg",
         // 認証の内側なので共有キャッシュには載せない
         "Cache-Control": "private, max-age=3600",
       },

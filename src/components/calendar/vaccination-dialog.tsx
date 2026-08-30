@@ -150,7 +150,9 @@ export function VaccinationDialog({
       try {
         const { body, contentType, width, height } = await prepare(file);
         const blob = await upload(`vaccinations/${crypto.randomUUID()}.jpg`, body, {
-          access: "public",
+          // ストアは private（証明書に氏名・住所が写るため）。閲覧は
+          // 同一オリジンの /api/vaccination-photos/[id] 経由で行う。
+          access: "private",
           contentType,
           handleUploadUrl: "/api/blob/upload",
           onUploadProgress: ({ percentage }) => setUploading(percentage),
