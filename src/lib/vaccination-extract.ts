@@ -228,8 +228,12 @@ const FACILITY =
   "Animal Hospital|Animal Clinic|Pet Clinic|Veterinary Clinic|Veterinary Hospital)";
 const FACILITY_RE = new RegExp(`^.*?${FACILITY}`, "i");
 
-/** 施設名のうしろに続いてよい長さ。「〜クリニック代々木」の「代々木」を残すため */
-const BRANCH_MAX = 8;
+/**
+ * 施設名のうしろに続いてよい長さ。「〜動物病院横浜WANCOTT院」のような
+ * 分院名を落とさないため。空白で離れて続くものは長さに関わらず捨てるので、
+ * ここを広げても氏名を拾う危険はほとんど増えない。
+ */
+const BRANCH_MAX = 14;
 
 /**
  * 先頭にくっついた住所らしき語。「東京都渋谷区 さくら動物病院」の

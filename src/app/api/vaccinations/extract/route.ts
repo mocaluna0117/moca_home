@@ -65,6 +65,8 @@ export async function POST(request: Request) {
   const result = await extractVaccinationFromImage(base64, file.type);
 
   if (!result.ok) {
+    // 失敗の手がかりを画面にも出す。ステータスと種別だけなので証明書の中身は乗らない
+    const hint = result.detail ? `（${result.detail}）` : "";
     const message =
       result.reason === "rate-limited"
         ? "読み取りが混み合っています。少し待ってからもう一度お試しください。"
@@ -75,7 +77,7 @@ export async function POST(request: Request) {
             : "画像の読み取りに失敗しました。手入力してください。";
     // 429 は再試行してよいことが伝わるステータスにする
     const status = result.reason === "rate-limited" ? 429 : 502;
-    return NextResponse.json({ ok: false, error: message }, { status });
+    return NextResponse.json({ ok: false, error: message + hint }, { status });
   }
 
   const fields = normalizeExtraction(result.raw, todayJst(nowJstIso()));

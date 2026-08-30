@@ -137,7 +137,12 @@ export type ExtractFailure =
 
 export type ExtractResult =
   | { ok: true; raw: RawExtraction }
-  | { ok: false; reason: ExtractFailure };
+  | {
+      ok: false;
+      reason: ExtractFailure;
+      /** 画面に出す短い手がかり。ステータスと種別だけで、証明書の中身は入れない */
+      detail?: string;
+    };
 
 function pickJson(text: string): RawExtraction | null {
   const start = text.indexOf("{");
@@ -158,11 +163,70 @@ function classify(status: number | undefined): ExtractFailure {
   return "upstream";
 }
 
+/**
+ * 構造化出力の指定は環境差が出やすい。段階的に落として、
+ * 「モデル名が違う」「スキーマ指定が通らない」で全滅しないようにする。
+ *
+ * 1. responseSchema（長く使われている OpenAPI サブセット）
+ * 2. 400 なら responseMimeType だけにして再試行（形は normalizeExtraction が担保）
+ * 3. 404 ならモデル一覧を引いて、使える flash 系に差し替えて再試行
+ */
+const GEMINI_SCHEMA = {
+  type: "OBJECT",
+  required: ["date", "name", "clinic", "nextDueDate"],
+  properties: {
+    date: { type: "STRING", description: "接種日。YYYY-MM-DD。不明なら空文字" },
+    name: { type: "STRING", description: "ワクチン名。不明なら空文字" },
+    clinic: { type: "STRING", description: "動物病院の施設名。不明なら空文字" },
+    nextDueDate: {
+      type: "STRING",
+      description: "次回予定日。YYYY-MM-DD か YYYY-MM。不明なら空文字",
+    },
+  },
+} as const;
+
+/** 使える flash 系モデルを1つ選ぶ。モデル名が変わっても自力で復帰するため */
+async function pickGeminiModel(
+  ai: { models: { list: () => Promise<unknown> } },
+): Promise<string | null> {
+  try {
+    const pager = (await ai.models.list()) as AsyncIterable<{
+      name?: string;
+      supportedActions?: string[];
+    }>;
+    const usable: string[] = [];
+    for await (const m of pager) {
+      const name = (m.name ?? "").replace(/^models\//, "");
+      if (!name) continue;
+      if (m.supportedActions && !m.supportedActions.includes("generateContent")) continue;
+      usable.push(name);
+    }
+    return (
+      usable.find((n) => n.includes("flash") && !n.includes("lite")) ??
+      usable.find((n) => n.includes("flash")) ??
+      usable.find((n) => n.includes("pro")) ??
+      usable[0] ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
 async function extractWithGemini(
   base64: string,
   mediaType: VisionMediaType,
 ): Promise<ExtractResult> {
-  const { GoogleGenAI, ApiError } = await import("@google/genai");
+  // 動的 import は try の中に置く。バンドルで解決できないとここで throw し、
+  // 外に漏れるとルートが 500 を返して原因が分からなくなる
+  let GoogleGenAI: typeof import("@google/genai").GoogleGenAI;
+  let ApiError: typeof import("@google/genai").ApiError;
+  try {
+    ({ GoogleGenAI, ApiError } = await import("@google/genai"));
+  } catch {
+    console.error("[vaccination-extract] @google/genai を読み込めない");
+    return { ok: false, reason: "upstream", detail: "sdk-load" };
+  }
   const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
     httpOptions: {
@@ -174,44 +238,86 @@ async function extractWithGemini(
     },
   });
 
-  try {
-    const res = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { inlineData: { mimeType: mediaType, data: base64 } },
-            { text: USER_PROMPT },
-          ],
-        },
+  const contents = [
+    {
+      role: "user",
+      parts: [
+        { inlineData: { mimeType: mediaType, data: base64 } },
+        { text: USER_PROMPT },
       ],
+    },
+  ];
+
+  async function attempt(model: string, withSchema: boolean) {
+    return ai.models.generateContent({
+      model,
+      contents,
       config: {
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
-        responseJsonSchema: OUTPUT_SCHEMA,
+        ...(withSchema ? { responseSchema: GEMINI_SCHEMA } : {}),
         // 読み取りに創造性は要らない
         temperature: 0,
       },
     });
-    const parsed = pickJson(res.text ?? "");
-    return parsed ? { ok: true, raw: parsed } : { ok: false, reason: "unreadable" };
-  } catch (err) {
-    if (err instanceof ApiError) {
-      const reason = classify(err.status);
-      console.error(`[vaccination-extract] Gemini エラー status=${err.status}`);
-      return { ok: false, reason };
-    }
-    console.error("[vaccination-extract] Gemini 呼び出しに失敗");
-    return { ok: false, reason: "upstream" };
   }
+
+  let model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  let withSchema = true;
+  let lastStatus: number | undefined;
+
+  for (let tries = 0; tries < 3; tries++) {
+    try {
+      const res = await attempt(model, withSchema);
+      const parsed = pickJson(res.text ?? "");
+      return parsed
+        ? { ok: true, raw: parsed }
+        : { ok: false, reason: "unreadable", detail: "empty" };
+    } catch (err) {
+      if (!(err instanceof ApiError)) {
+        console.error("[vaccination-extract] Gemini 呼び出しに失敗");
+        return { ok: false, reason: "upstream", detail: "network" };
+      }
+      lastStatus = err.status;
+      // Google のエラー本文は「リクエストのどこが悪いか」で、画像の中身は含まない
+      console.error(
+        `[vaccination-extract] Gemini status=${err.status} model=${model} schema=${withSchema} ${String(err.message).slice(0, 200)}`,
+      );
+      if (err.status === 400 && withSchema) {
+        // スキーマ指定が通らない環境。形は normalizeExtraction が担保する
+        withSchema = false;
+        continue;
+      }
+      if (err.status === 404) {
+        const found = await pickGeminiModel(ai);
+        if (found && found !== model) {
+          console.error(`[vaccination-extract] モデルを ${found} に切り替えて再試行`);
+          model = found;
+          continue;
+        }
+        return { ok: false, reason: "upstream", detail: `model-not-found ${model}` };
+      }
+      return {
+        ok: false,
+        reason: classify(err.status),
+        detail: `gemini ${err.status ?? "?"}`,
+      };
+    }
+  }
+  return { ok: false, reason: "upstream", detail: `gemini ${lastStatus ?? "?"}` };
 }
 
 async function extractWithAnthropic(
   base64: string,
   mediaType: VisionMediaType,
 ): Promise<ExtractResult> {
-  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  let Anthropic: typeof import("@anthropic-ai/sdk").default;
+  try {
+    ({ default: Anthropic } = await import("@anthropic-ai/sdk"));
+  } catch {
+    console.error("[vaccination-extract] @anthropic-ai/sdk を読み込めない");
+    return { ok: false, reason: "upstream", detail: "sdk-load" };
+  }
   const client = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
     // タイムアウトも再試行の対象なので、最悪 timeout×(maxRetries+1)+バックオフ
@@ -254,10 +360,14 @@ async function extractWithAnthropic(
     // 記録するのは種別だけにする。
     if (err instanceof Anthropic.APIError) {
       console.error(`[vaccination-extract] Anthropic エラー status=${err.status}`);
-      return { ok: false, reason: classify(err.status) };
+      return {
+        ok: false,
+        reason: classify(err.status),
+        detail: `claude ${err.status ?? "?"}`,
+      };
     }
     console.error("[vaccination-extract] Anthropic 呼び出しに失敗");
-    return { ok: false, reason: "upstream" };
+    return { ok: false, reason: "upstream", detail: "network" };
   }
 }
 
@@ -267,9 +377,19 @@ export async function extractVaccinationFromImage(
 ): Promise<ExtractResult> {
   const provider = aiProvider();
   if (provider === null) return { ok: false, reason: "not-configured" };
-  const work =
+  // どんな例外もここで止める。ルートが 500 を返すと、クライアントには
+  // 何が起きたのか分からないメッセージしか出せない
+  const work = (
     provider === "gemini"
       ? extractWithGemini(base64, mediaType)
-      : extractWithAnthropic(base64, mediaType);
-  return withDeadline<ExtractResult>(work, { ok: false, reason: "upstream" });
+      : extractWithAnthropic(base64, mediaType)
+  ).catch((): ExtractResult => {
+    console.error("[vaccination-extract] 想定外の例外");
+    return { ok: false, reason: "upstream", detail: "unexpected" };
+  });
+  return withDeadline<ExtractResult>(work, {
+    ok: false,
+    reason: "upstream",
+    detail: "timeout",
+  });
 }
