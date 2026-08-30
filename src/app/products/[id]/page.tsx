@@ -18,8 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ProductMealHistory } from "@/components/product-meal-history";
 import { parseBonusRule } from "@/lib/bonus";
 import { getProductDetail } from "@/lib/queries";
+import { getProductMealSummary } from "@/lib/queries-log";
 import { formatDate, formatYen, parseJsonArray } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +35,10 @@ export default async function ProductPage({
   const productId = Number.parseInt(id, 10);
   if (!Number.isInteger(productId)) notFound();
 
-  const { product, snapshot, history } = await getProductDetail(productId);
+  const [{ product, snapshot, history }, meal] = await Promise.all([
+    getProductDetail(productId),
+    getProductMealSummary(productId),
+  ]);
   if (!product && !snapshot) notFound();
 
   const isGone = product?.fetchStatus === "not_found";
@@ -117,10 +122,14 @@ export default async function ProductPage({
             </div>
           )}
 
-          <dl className="grid grid-cols-3 gap-3 text-sm">
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <Stat label="購入回数" value={`${history.length}回`} />
             <Stat label="購入数量" value={`${totalQuantity}点`} />
             <Stat label="支出合計" value={formatYen(totalSpent)} />
+            <Stat
+              label="食べ始め"
+              value={meal.firstDate ? formatDate(meal.firstDate) : "—"}
+            />
           </dl>
 
           <a
@@ -193,6 +202,8 @@ export default async function ProductPage({
           </Table>
         </div>
       </section>
+
+      <ProductMealHistory meal={meal} />
 
       {!isGone && product?.descriptionHtml && (
         <section className="flex flex-col gap-3">

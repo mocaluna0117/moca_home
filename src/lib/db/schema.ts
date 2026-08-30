@@ -137,3 +137,100 @@ export type Product = typeof products.$inferSelect;
 export type SyncRun = typeof syncRuns.$inferSelect;
 
 export type ReceivedBonus = typeof receivedBonuses.$inferSelect;
+
+// ---------------------------------------------------------------- 飼育記録
+//
+// 以下3テーブルの `date` / `next_due_date` は、他のカラムと違い
+// **+09:00 を持たない裸の 'YYYY-MM-DD'**。暦日は「瞬間」ではないため、
+// タイムゾーン変換を一度も通さないことで日付が1日ずれる事故を構造的に
+// 防ぐ（月の抽出も純粋な文字列比較になる）。
+// created_at / updated_at は本物の瞬間なので従来どおり nowJstIso()。
+
+/** "morning" | "evening" | "treat" — src/lib/calendar.ts と同じ集合 */
+export type MealSlot = "morning" | "evening" | "treat";
+
+/**
+ * 食事の日誌。1日は朝・夜の2食で、おやつを第3のスロットとして同じ形で扱う。
+ *
+ * 1行 = 1スロットで与えた食べ物1つ（order_items が1注文に複数行並ぶのと
+ * 同じ構造の日付版）。「この商品をいつから食べているか」を SQL の min(date)
+ * で答えるため、食べ物は JSON 配列ではなく必ず行として持つ。
+ */
+export const mealEntries = sqliteTable(
+  "meal_entries",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** 与えた日, DATE ONLY e.g. "2026-08-30" */
+    date: text("date").notNull(),
+    slot: text("slot").$type<MealSlot>().notNull(),
+    /** スロット内の表示順（主食 → トッピングの並びを保つ） */
+    seq: integer("seq").notNull().default(0),
+    /** null = カタログ外（手作り・他社製品・もらい物） */
+    productId: integer("product_id").references(() => products.id),
+    /**
+     * SNAPSHOT — 記録時のカタログ名、または自由入力そのもの。
+     * 日誌は消えない記録なので、カタログ同期で商品が改名・削除されても
+     * 「何を食べていたか」が読み取れなくなってはいけない。
+     */
+    label: text("label").notNull(),
+    /** 分量の自由入力 "50g" / "1袋" — 単位が一定しないので数値にしない */
+    amount: text("amount"),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("meal_entries_date_slot_idx").on(t.date, t.slot),
+    index("meal_entries_product_id_idx").on(t.productId),
+    index("meal_entries_label_idx").on(t.label),
+  ],
+);
+
+/** ワクチン接種の記録。証明書の写真は vaccination_photos に 1..n */
+export const vaccinations = sqliteTable(
+  "vaccinations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** 接種日, DATE ONLY */
+    date: text("date").notNull(),
+    /** 例 "6種混合ワクチン" / "狂犬病予防注射" */
+    name: text("name").notNull(),
+    /** 動物病院名（任意） */
+    clinic: text("clinic"),
+    /** 次回接種予定日（任意）, DATE ONLY */
+    nextDueDate: text("next_due_date"),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("vaccinations_date_idx").on(t.date)],
+);
+
+/**
+ * 接種証明書の写真。実体は Vercel Blob（private ストア）にあり、
+ * ここはメタデータだけを持つ。
+ * - url      : Blob の URL（private なので直リンクでは開けない）
+ * - pathname : del() の削除キー。URL 形式の変更に強くするため独立した列
+ * - width/height : 縮小後の実寸。next/image に渡してレイアウトのずれを防ぐ
+ */
+export const vaccinationPhotos = sqliteTable(
+  "vaccination_photos",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    vaccinationId: integer("vaccination_id")
+      .notNull()
+      .references(() => vaccinations.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    pathname: text("pathname").notNull(),
+    contentType: text("content_type"),
+    sizeBytes: integer("size_bytes"),
+    width: integer("width"),
+    height: integer("height"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("vaccination_photos_vaccination_id_idx").on(t.vaccinationId)],
+);
+
+export type MealEntry = typeof mealEntries.$inferSelect;
+export type Vaccination = typeof vaccinations.$inferSelect;
+export type VaccinationPhoto = typeof vaccinationPhotos.$inferSelect;

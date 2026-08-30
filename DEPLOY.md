@@ -92,6 +92,20 @@ npm run sync:prod -- --catalog     # .env.turso を読んで本番DBに書き込
 `sync_runs` テーブルで実行中ロックを取るため、CLI と Vercel の同時実行はどちらか一方が
 「同期が既に実行中です」で弾かれます。
 
+## 写真の保存先（Vercel Blob）
+
+ワクチン接種証明書の写真を使うには Blob ストアが必要です（未設定でも
+日付・ワクチン名・メモは保存できます）。
+
+1. Vercel プロジェクトの **Storage** → **Create Database** → **Blob**
+2. アクセスは **Private** を選ぶ（証明書には氏名・住所・動物病院名が写るため）
+3. 作成すると `BLOB_READ_WRITE_TOKEN` が自動で環境変数に入る
+4. 手元でも写真を扱うなら `npx vercel env pull` で `.env.local` に取り込む
+
+| 変数 | 値 |
+|---|---|
+| `BLOB_READ_WRITE_TOKEN` | Blob ストア作成時に自動で入る（手動設定は不要） |
+
 ## 注意点
 
 - **Vercel のデータセンターIPからショップにログイン**します。弾かれるようなら注文同期も CLI 実行に切り替えてください（コード変更は不要、`npm run sync:prod`）

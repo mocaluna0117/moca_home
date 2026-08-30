@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 
 import { LogoutButton } from "@/components/logout-button";
+import { TopNav } from "@/components/top-nav";
 import { SyncButton } from "@/components/sync-button";
 import { Toaster } from "@/components/ui/sonner";
 import { SESSION_COOKIE, isValidSession } from "@/lib/auth";
@@ -38,8 +39,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur">
             <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
               <Link href="/" className="font-semibold tracking-tight">
-                20and20 購入履歴
+                20and20
               </Link>
+              <TopNav />
               <span className="text-xs text-muted-foreground tabular-nums">
                 最終同期: {formatSyncedAt(lastSync?.finishedAt)}
               </span>
