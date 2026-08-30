@@ -11,15 +11,21 @@
  * - 商品詳細は開いたときだけ /api/catalog/[id] を叩き、こちらもキャッシュ
  */
 
-import { ArrowLeft, ExternalLink, Gift, Info, Star } from "lucide-react";
+import { ArrowLeft, ExternalLink, Gift, Info } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { formatRuleLong } from "@/components/bonus-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProductName } from "@/components/product-name";
+import { FavoriteButton } from "@/components/favorite-button";
 import { parseBonusRule } from "@/lib/bonus";
+import {
+  getFavoriteCache,
+  setFavoriteCache,
+  subscribeFavorites,
+} from "@/lib/favorite-cache";
 import { formatYen } from "@/lib/format";
 
 export interface CatalogItem {
@@ -32,17 +38,7 @@ export interface CatalogItem {
 // モジュールレベルのキャッシュ: ブラウザのセッション中に1回だけ取得する
 let catalogCache: CatalogItem[] | null = null;
 
-/**
- * 星がついた商品ID。本体（約300KB）と違い軽いので、ダイアログを開くたびに
- * 取り直す（同期で増えた星もリロード無しで拾える）。
- */
-let favoriteIdsCache: Set<number> = new Set();
 
-/** 星ボタンを押した直後に同一セッションのピン留めを合わせる。 */
-export function markFavorite(productId: number, starred: boolean): void {
-  if (starred) favoriteIdsCache.add(productId);
-  else favoriteIdsCache.delete(productId);
-}
 
 /** ダイアログを開いたときに呼ぶ。取得済みなら即返す。 */
 export function useCatalog(open: boolean): CatalogItem[] | null {
@@ -68,7 +64,13 @@ export function useCatalog(open: boolean): CatalogItem[] | null {
 
 /** 開くたびに軽いエンドポイントから星を取り直す。 */
 export function useFavoriteIds(open: boolean): Set<number> {
-  const [ids, setIds] = useState<Set<number>>(favoriteIdsCache);
+  // キャッシュを購読する。星ボタンを押すと markFavorite が通知するので、
+  // 同じダイアログ内の表示とピン留めの並びが即座に追随する。
+  const ids = useSyncExternalStore(
+    subscribeFavorites,
+    getFavoriteCache,
+    getFavoriteCache,
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -76,8 +78,7 @@ export function useFavoriteIds(open: boolean): Set<number> {
     fetch("/api/favorites")
       .then((res) => res.json())
       .then((data: { ids: number[] }) => {
-        favoriteIdsCache = new Set(data.ids);
-        if (alive) setIds(favoriteIdsCache);
+        if (alive) setFavoriteCache(data.ids);
       })
       .catch(() => {});
     return () => {
@@ -140,18 +141,20 @@ export function CatalogPicker({
             >
               <Thumb src={c.imageUrl} alt="" />
               <span className="flex-1 text-sm leading-snug break-words">
-                {favs.has(c.id) && (
-                  <Star
-                    className="mr-1 inline size-3 fill-foreground align-[-1px] text-foreground"
-                    aria-label="お気に入り"
-                  />
-                )}
                 <ProductName name={c.name} />
               </span>
               <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                 {formatYen(c.priceYen)}
               </span>
             </button>
+            {/* 選択ボタンの兄弟。入れ子にしないので不正HTMLにならない */}
+            <span className="flex shrink-0 items-center border-l px-1">
+              <FavoriteButton
+                productId={c.id}
+                isFavorite={favs.has(c.id)}
+                size="sm"
+              />
+            </span>
             <button
               type="button"
               aria-label={`${c.name} の詳細を見る`}

@@ -7,6 +7,7 @@ import {
   formatBonusSummary,
   formatRuleShort,
 } from "@/components/bonus-badge";
+import { FavoriteButton } from "@/components/favorite-button";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { ProductName } from "@/components/product-name";
 import { ReceivedBonusSection } from "@/components/received-bonus-section";
@@ -21,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getCatalogState, getOrder } from "@/lib/queries";
+import { getCatalogState, getFavoriteProductIds, getOrder } from "@/lib/queries";
 import { formatDateTime, formatYen } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,10 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
 
   const itemTotal = order.items.reduce((n, i) => n + i.quantity, 0);
   const hasActuals = order.receivedTotal > 0 || order.receivedBonuses.length > 0;
-  const catalogState = await getCatalogState();
+  const [catalogState, favoriteIds] = await Promise.all([
+    getCatalogState(),
+    getFavoriteProductIds(),
+  ]);
   const hasPrediction =
     order.bonuses.totalBonusCount > 0 || order.bonuses.gifts.length > 0;
 
@@ -96,11 +100,18 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                         <ProductName name={item.productName} />
                       </span>
                     )}
-                    {item.bonus.activated && !item.bonus.pooled && (
-                      <div className="mt-1">
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {item.productId !== null && (
+                        <FavoriteButton
+                          productId={item.productId}
+                          isFavorite={favoriteIds.has(item.productId)}
+                          size="sm"
+                        />
+                      )}
+                      {item.bonus.activated && !item.bonus.pooled && (
                         <BonusBadge item={item.bonus} />
-                      </div>
-                    )}
+                      )}
+                    </div>
                     {item.bonus.activated && item.bonus.pooled && (
                       <p className="mt-1 text-xs text-muted-foreground">
                         合算特典対象（{item.bonus.poolFamily ?? "合算"}）
@@ -164,6 +175,13 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                       </span>
                     )}
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {r.productId !== null && (
+                        <FavoriteButton
+                          productId={r.productId}
+                          isFavorite={favoriteIds.has(r.productId)}
+                          size="sm"
+                        />
+                      )}
                       <Badge variant="secondary" className="font-normal">
                         <Gift aria-hidden="true" />
                         おまけ

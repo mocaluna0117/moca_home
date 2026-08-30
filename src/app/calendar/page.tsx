@@ -9,6 +9,7 @@ import {
 import { MealDayDialog, type DayDraft } from "@/components/calendar/meal-day-dialog";
 import { MonthNav } from "@/components/calendar/month-nav";
 import { VaccinationSection } from "@/components/calendar/vaccination-section";
+import { FavoriteButton } from "@/components/favorite-button";
 import { ProductName } from "@/components/product-name";
 import { SegmentedNav } from "@/components/segmented-nav";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,7 @@ import {
   getVaccinations,
   type DayMeals,
 } from "@/lib/queries-log";
+import { getFavoriteProductIds } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -201,7 +203,10 @@ async function LogTab({
 }
 
 async function FoodsTab() {
-  const foods = await getFoodHistory();
+  const [foods, favoriteIds] = await Promise.all([
+    getFoodHistory(),
+    getFavoriteProductIds(),
+  ]);
 
   if (foods.length === 0) {
     return (
@@ -246,6 +251,15 @@ async function FoodsTab() {
                     <span className="text-sm leading-snug">
                       <ProductName name={f.label} />
                     </span>
+                  )}
+                  {f.productId !== null && (
+                    <div className="mt-1">
+                      <FavoriteButton
+                        productId={f.productId}
+                        isFavorite={favoriteIds.has(f.productId)}
+                        size="sm"
+                      />
+                    </div>
                   )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">

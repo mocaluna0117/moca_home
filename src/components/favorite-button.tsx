@@ -4,8 +4,8 @@ import { Star } from "lucide-react";
 import { useOptimistic, useTransition } from "react";
 import { toast } from "sonner";
 
-import { markFavorite } from "@/components/catalog-picker";
 import { toggleFavorite } from "@/lib/actions";
+import { markFavorite } from "@/lib/favorite-cache";
 import { cn } from "@/lib/utils";
 
 /**

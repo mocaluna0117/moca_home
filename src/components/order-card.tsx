@@ -2,6 +2,7 @@ import { Gift } from "lucide-react";
 import Link from "next/link";
 
 import { BonusBadge, formatBonusSummary } from "@/components/bonus-badge";
+import { FavoriteButton } from "@/components/favorite-button";
 import { ProductName } from "@/components/product-name";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { ReceivedBonusDialog } from "@/components/received-bonus-dialog";
@@ -17,9 +18,12 @@ const MAX_VISIBLE_ITEMS = 4;
 export function OrderCard({
   order,
   catalogSynced,
+  favoriteIds,
 }: {
   order: OrderWithItems;
   catalogSynced: boolean;
+  /** 星がついた商品ID。ページ側で1回だけ引いて配る */
+  favoriteIds: Set<number>;
 }) {
   const visible = order.items.slice(0, MAX_VISIBLE_ITEMS);
   const hidden = order.items.length - visible.length;
@@ -101,6 +105,15 @@ export function OrderCard({
                 )}
                 <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
                   {formatYen(item.unitPriceYen)} × {item.quantity}
+                  {item.productId !== null && (
+                    <span className="relative z-20 inline-flex">
+                      <FavoriteButton
+                        productId={item.productId}
+                        isFavorite={favoriteIds.has(item.productId)}
+                        size="sm"
+                      />
+                    </span>
+                  )}
                   {item.bonus.activated && !item.bonus.pooled && (
                     // z-20 keeps the badge's title tooltip reachable above the
                     // card-wide link.
@@ -159,6 +172,15 @@ export function OrderCard({
                     おまけ
                   </Badge>
                   ×{r.quantity}
+                  {r.productId !== null && (
+                    <span className="relative z-20 inline-flex">
+                      <FavoriteButton
+                        productId={r.productId}
+                        isFavorite={favoriteIds.has(r.productId)}
+                        size="sm"
+                      />
+                    </span>
+                  )}
                   {r.note && <span>・{r.note}</span>}
                 </p>
               </div>

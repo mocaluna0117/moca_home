@@ -6,6 +6,7 @@ import { ProductCard } from "@/components/product-card";
 import { SearchInput } from "@/components/search-input";
 import {
   getCatalogState,
+  getFavoriteProductIds,
   getOrders,
   getProductSummaries,
   getStats,
@@ -43,12 +44,13 @@ export default async function HomePage({
     );
   }
 
-  const [orders, catalogState, productSummaries] = await Promise.all([
+  const [orders, catalogState, productSummaries, favoriteIds] = await Promise.all([
     view === "orders" ? getOrders(q) : Promise.resolve([]),
     getCatalogState(),
     view === "products"
       ? getProductSummaries(q, { favoritesOnly })
       : Promise.resolve([]),
+    getFavoriteProductIds(),
   ]);
   const catalogSynced = catalogState.count > 100;
   const isEmptyResult =
@@ -146,6 +148,7 @@ export default async function HomePage({
                 key={order.id}
                 order={order}
                 catalogSynced={catalogSynced}
+                favoriteIds={favoriteIds}
               />
             ))}
           </div>
