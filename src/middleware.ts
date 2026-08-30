@@ -30,7 +30,13 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // everything except the login page, Next internals and static files
-    "/((?!login|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)",
+    // Everything except the login page, Next internals and the generated icons.
+    //
+    // Do NOT exclude "anything ending in an image extension" here. That let
+    // /api/vaccination-photos/1.jpg reach the handler with no session (the
+    // handler used parseInt, which reads "1.jpg" as 1) and served the
+    // certificate — name, address and phone — to anyone. public/ is empty, so
+    // the only static files are these two generated icons, and they are art.
+    "/((?!login|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png).*)",
   ],
 };

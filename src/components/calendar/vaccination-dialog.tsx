@@ -1,10 +1,11 @@
 "use client";
 
 import { upload } from "@vercel/blob/client";
-import { Camera, ImagePlus, Syringe, X } from "lucide-react";
+import { Camera, ImagePlus, Syringe } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { PhotoStrip } from "@/components/calendar/photo-strip";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -264,28 +265,12 @@ export function VaccinationDialog({
                 </p>
               ) : (
                 <>
-                  {photos.length > 0 && (
-                    <ul className="flex flex-wrap gap-2">
-                      {photos.map((p) => (
-                        <li key={p.id} className="relative">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`/api/vaccination-photos/${p.id}`}
-                            alt="接種証明書"
-                            className="size-20 rounded border object-cover"
-                          />
-                          <button
-                            type="button"
-                            aria-label="この写真を削除"
-                            className="absolute -top-2 -right-2 rounded-full border bg-background p-1 text-muted-foreground hover:text-foreground"
-                            onClick={() => handleDeletePhoto(p.id)}
-                          >
-                            <X className="size-3" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <PhotoStrip
+                    photos={photos}
+                    caption={`${date} ・ ${name || "ワクチン名未入力"}`}
+                    nested
+                    onDelete={handleDeletePhoto}
+                  />
 
                   {uploading !== null && (
                     <p className="text-xs text-muted-foreground tabular-nums">

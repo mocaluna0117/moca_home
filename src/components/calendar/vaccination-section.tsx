@@ -1,5 +1,6 @@
 import { Syringe } from "lucide-react";
 
+import { PhotoStrip } from "@/components/calendar/photo-strip";
 import { VaccinationDialog } from "@/components/calendar/vaccination-dialog";
 import { VaccinationDeleteButton } from "@/components/calendar/vaccination-delete-button";
 import { Badge } from "@/components/ui/badge";
@@ -95,20 +96,16 @@ export function VaccinationSection({
               )}
 
               {r.photos.length > 0 && (
-                <ul className="mt-2 flex flex-wrap gap-2">
-                  {r.photos.map((p) => (
-                    <li key={p.id}>
-                      {/* private blob は同一オリジンのルート経由でしか読めない */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`/api/vaccination-photos/${p.id}`}
-                        alt="接種証明書"
-                        className="size-20 rounded border object-cover"
-                        loading="lazy"
-                      />
-                    </li>
-                  ))}
-                </ul>
+                <div className="mt-2">
+                  <PhotoStrip
+                    photos={r.photos.map((p) => ({
+                      id: p.id,
+                      width: p.width,
+                      height: p.height,
+                    }))}
+                    caption={`${formatDate(r.date)} ・ ${r.name}`}
+                  />
+                </div>
               )}
             </li>
           ))}

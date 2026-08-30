@@ -24,6 +24,7 @@ import { parseBonusRule } from "@/lib/bonus";
 import { getFavoriteProductIds, getProductDetail } from "@/lib/queries";
 import { getProductMealSummary } from "@/lib/queries-log";
 import { formatDate, formatYen, parseJsonArray } from "@/lib/format";
+import { parseIdParam } from "@/lib/route-params";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +34,8 @@ export default async function ProductPage({
   params,
 }: PageProps<"/products/[id]">) {
   const { id } = await params;
-  const productId = Number.parseInt(id, 10);
-  if (!Number.isInteger(productId)) notFound();
+  const productId = parseIdParam(id);
+  if (productId === null) notFound();
 
   const [{ product, snapshot, history }, meal, favoriteIds] = await Promise.all([
     getProductDetail(productId),

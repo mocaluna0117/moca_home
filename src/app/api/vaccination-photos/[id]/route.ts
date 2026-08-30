@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isBlobConfigured } from "@/lib/blob";
+import { parseIdParam } from "@/lib/route-params";
 import { getVaccinationPhoto } from "@/lib/queries-log";
 
 export const runtime = "nodejs";
@@ -16,8 +17,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const photoId = Number.parseInt(id, 10);
-  if (!Number.isInteger(photoId)) {
+  // parseInt を使わない。"1.jpg" が 1 と読まれ、拡張子つきURLで
+  // middleware を迂回されていた（src/lib/route-params.ts のコメント参照）
+  const photoId = parseIdParam(id);
+  if (photoId === null) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
 
