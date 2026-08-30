@@ -131,7 +131,9 @@ export function CatalogPicker({
 
   return (
     <>
-      <ul className="max-h-96 divide-y overflow-y-auto rounded border">
+      {/* 専用モーダルに移したので、行が高くなるモバイルでも数件は見えるよう
+          画面基準で伸ばす（商品名は60〜140文字あり1件で8行になる） */}
+      <ul className="max-h-[min(60vh,32rem)] divide-y overflow-y-auto rounded border">
         {shown.map((c) => (
           <li key={c.id} className="flex items-stretch">
             <button

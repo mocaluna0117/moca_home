@@ -1,15 +1,11 @@
 "use client";
 
-import { CalendarDays, CopyPlus, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, CopyPlus, Plus, Search, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import {
-  CatalogPicker,
-  Thumb,
-  useCatalog,
-  useFavoriteIds,
-} from "@/components/catalog-picker";
+import { Thumb } from "@/components/catalog-picker";
+import { ProductSearchDialog } from "@/components/product-search-dialog";
 import { ProductName } from "@/components/product-name";
 import { Button } from "@/components/ui/button";
 import {
@@ -116,8 +112,6 @@ export function MealDayDialog({
   const [open, setOpen] = useState(false);
   const [slots, setSlots] = useState<Slots>(() => toSlots(draft));
   const [isPending, startTransition] = useTransition();
-  const catalog = useCatalog(open);
-  const favoriteIds = useFavoriteIds(open);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -225,28 +219,31 @@ export function MealDayDialog({
                     {row.mode === "product" ? (
                       row.productId === null ? (
                         <>
-                          <Input
-                            value={row.query}
-                            onChange={(e) =>
-                              patch(slot, row.key, { query: e.target.value })
-                            }
-                            placeholder="商品名で検索"
-                            aria-label="商品名で検索"
-                          />
-                          <CatalogPicker
-                            catalog={catalog}
-                            query={row.query}
-                            onSelect={(c) =>
-                              patch(slot, row.key, {
-                                productId: c.id,
-                                label: c.name,
-                                imageUrl: c.imageUrl,
-                                query: "",
-                              })
-                            }
-                            favoriteIds={favoriteIds}
-                            onPreview={() => {}}
-                          />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <ProductSearchDialog
+                              prefetch={open}
+                              nested
+                              title={`${SLOT_LABEL_LONG[slot]}に食べたものを選ぶ`}
+                              description="20&20 の全商品から探せます。お気に入りは先頭に表示されます。"
+                              trigger={
+                                <>
+                                  <Search aria-hidden="true" />
+                                  商品を選ぶ
+                                </>
+                              }
+                              onSelect={(c) =>
+                                patch(slot, row.key, {
+                                  productId: c.id,
+                                  label: c.name,
+                                  imageUrl: c.imageUrl,
+                                  query: "",
+                                })
+                              }
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              まだ選ばれていません
+                            </span>
+                          </div>
                           <button
                             type="button"
                             className="w-fit text-xs text-muted-foreground underline"

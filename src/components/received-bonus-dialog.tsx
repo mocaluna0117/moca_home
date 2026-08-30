@@ -1,6 +1,6 @@
 "use client";
 
-import { Gift, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Gift, Plus, Search, Sparkles, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -17,13 +17,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  CatalogPicker,
-  ProductPreview,
-  Thumb,
-  useCatalog,
-  useFavoriteIds,
-} from "@/components/catalog-picker";
+import { ProductPreview, Thumb } from "@/components/catalog-picker";
+import { ProductSearchDialog } from "@/components/product-search-dialog";
 import { Input } from "@/components/ui/input";
 
 /** Serializable draft row passed from the RSC page. */
@@ -87,8 +82,6 @@ export function ReceivedBonusDialog({
     null,
   );
   const [isPending, startTransition] = useTransition();
-  const catalog = useCatalog(open);
-  const favoriteIds = useFavoriteIds(open);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -180,28 +173,31 @@ export function ReceivedBonusDialog({
               {row.mode === "product" ? (
                 row.productId === null ? (
                   <>
-                    <Input
-                      value={row.query}
-                      onChange={(e) => patchRow(row.key, { query: e.target.value })}
-                      placeholder="商品名で検索"
-                      aria-label="商品名で検索"
-                    />
-                    <CatalogPicker
-                      catalog={catalog}
-                      query={row.query}
-                      favoriteIds={favoriteIds}
-                      onPreview={(c) =>
-                        setPreview({ rowKey: row.key, productId: c.id })
-                      }
-                      onSelect={(c) =>
-                        patchRow(row.key, {
-                          productId: c.id,
-                          label: c.name,
-                          imageUrl: c.imageUrl,
-                          query: "",
-                        })
-                      }
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ProductSearchDialog
+                        prefetch={open}
+                        nested
+                        title="おまけの商品を選ぶ"
+                        description="20&20 の全商品から探せます。お気に入りは先頭に表示されます。"
+                        trigger={
+                          <>
+                            <Search aria-hidden="true" />
+                            商品を選ぶ
+                          </>
+                        }
+                        onSelect={(c) =>
+                          patchRow(row.key, {
+                            productId: c.id,
+                            label: c.name,
+                            imageUrl: c.imageUrl,
+                            query: "",
+                          })
+                        }
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        まだ選ばれていません
+                      </span>
+                    </div>
                     {!catalogSynced && (
                       <p className="text-xs text-muted-foreground">
                         カタログ未同期のため購入済み商品のみ表示しています。ヘッダーの「カタログ同期」で全商品から選べるようになります。

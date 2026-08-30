@@ -41,15 +41,22 @@ function DialogOverlay({
 
 function DialogContent({
   className,
+  overlayProps,
   children,
   showCloseButton = true,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  /**
+   * 背景（Backdrop）への追加props。入れ子ダイアログで親を沈ませるのに使う。
+   * Base UI は入れ子のときデフォルトで背景を描画しない（親の背景が既に
+   * あるため）ので、濃さを変えるには forceRender も併せて渡すこと。
+   */
+  overlayProps?: DialogPrimitive.Backdrop.Props
 }) {
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay {...overlayProps} />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(

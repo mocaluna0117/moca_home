@@ -3,7 +3,7 @@ import { PackageOpen, SearchX, Star } from "lucide-react";
 
 import { OrderCard } from "@/components/order-card";
 import { ProductCard } from "@/components/product-card";
-import { SearchInput } from "@/components/search-input";
+import { SearchLauncher } from "@/components/search-launcher";
 import {
   getCatalogState,
   getFavoriteProductIds,
@@ -126,7 +126,7 @@ export default async function HomePage({
               お気に入り
             </Link>
           )}
-          <SearchInput />
+          <SearchLauncher />
         </div>
       </div>
 
