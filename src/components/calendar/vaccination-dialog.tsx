@@ -5,6 +5,7 @@ import { Camera, ImagePlus, Sparkles, Syringe, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { MaskEditorDialog } from "@/components/calendar/mask-editor";
 import { PhotoStrip } from "@/components/calendar/photo-strip";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +24,7 @@ import {
   detachVaccinationPhoto,
   saveVaccination,
 } from "@/lib/actions-log";
+import type { AiProvider } from "@/lib/ai";
 import type { DateStr } from "@/lib/calendar";
 import type { NormalizedExtraction } from "@/lib/vaccination-extract";
 
@@ -50,14 +52,6 @@ const QUALITY = 0.82;
 const SKIP_BELOW_BYTES = 1.5 * 1024 * 1024;
 /** そのまま保存してよい形式。HEIC は Chrome / Firefox が <img> で描けない */
 const KEEP_AS_IS = new Set(["image/jpeg", "image/png", "image/webp"]);
-
-/**
- * 認識用の縮小。保存用（2000 / 0.82）と分けているのは、Claude が HEIC を
- * 受け付けないのと、Function のボディ上限 4.5MB に収める必要があるため。
- * 品質を落としすぎると証明書の細かい文字が潰れるので 0.85 まで。
- */
-const VISION_EDGE = 2000;
-const VISION_QUALITY = 0.85;
 
 /**
  * 保存前の写真。Blob へのアップロードは「保存」を押したあと、記録が
@@ -117,44 +111,19 @@ async function prepare(file: File): Promise<{
   }
 }
 
-/**
- * 読み取り用の小さなJPEGを作る。保存用とは別に作る理由は2つ:
- * - Claude は HEIC を受け付けない。iPhone の原本がそのまま来る経路がある
- * - 認識APIは Function を通るのでリクエストボディ 4.5MB の制限がある
- * 変換できない端末では null を返し、自動入力だけ諦めて手入力に落とす。
- */
-async function prepareForVision(file: File): Promise<Blob | null> {
-  try {
-    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, VISION_EDGE / Math.max(bitmap.width, bitmap.height));
-    const w = Math.round(bitmap.width * scale);
-    const h = Math.round(bitmap.height * scale);
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
-    bitmap.close();
-    return await new Promise<Blob | null>((res) =>
-      canvas.toBlob(res, "image/jpeg", VISION_QUALITY),
-    );
-  } catch {
-    return null;
-  }
-}
-
 export function VaccinationDialog({
   record,
   today,
   blobEnabled,
-  aiEnabled,
+  aiProvider,
   trigger,
   triggerVariant = "outline",
 }: {
   record?: VaccinationRecord;
   today: DateStr;
   blobEnabled: boolean;
-  /** ANTHROPIC_API_KEY があるか。無ければ自動入力の導線を出さない */
-  aiEnabled: boolean;
+  /** 読み取りの送り先。null なら自動入力の導線を出さない */
+  aiProvider: AiProvider | null;
   trigger: string;
   triggerVariant?: "default" | "outline" | "ghost";
 }) {
@@ -167,6 +136,8 @@ export function VaccinationDialog({
   const [photos, setPhotos] = useState<PhotoRef[]>(record?.photos ?? []);
   const [pending, setPending] = useState<PendingPhoto[]>([]);
   const [reading, setReading] = useState(false);
+  // 目隠しエディタに渡している写真。null なら閉じている
+  const [maskTarget, setMaskTarget] = useState<File | null>(null);
   const [uploading, setUploading] = useState<number | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   // 新規作成の接種日は today で初期表示しているだけ。人が触っていなければ
@@ -191,6 +162,7 @@ export function VaccinationDialog({
       setDateTouched(false);
       setUploading(null);
       setReading(false);
+      setMaskTarget(null);
       setPending((prev) => {
         resetPending(prev);
         return [];
@@ -292,7 +264,7 @@ export function VaccinationDialog({
 
     if (!aiEnabled) return;
     // 4項目とも埋まっているなら読み取っても入る先が無い。編集で写真だけ
-    // 足す場合がこれに当たるので、余計な送信と課金をしない。
+    // 足す場合がこれに当たるので、余計な送信をしない。
     const allFilled =
       !dateIsFree &&
       date !== "" &&
@@ -301,20 +273,18 @@ export function VaccinationDialog({
       nextDue.trim() !== "";
     if (allFilled) return;
 
-    // 読み取りは1枚目だけ。裏面や2枚目に同じ項目は載っていないのが普通で、
-    // 枚数ぶん課金する価値がない。
-    const target = chosen[0];
+    // 読み取りは1枚目だけ。裏面や2枚目に同じ項目は載っていないのが普通。
+    // すぐには送らず、まず目隠しエディタを開いて本人に確認してもらう。
+    setMaskTarget(chosen[0]);
+  }
+
+  /** 目隠し済みの画像を読み取りに出す。ここが唯一、外へ画像を送る場所 */
+  async function runExtraction(masked: Blob) {
+    setMaskTarget(null);
     setReading(true);
     try {
-      const small = await prepareForVision(target);
-      if (!small) {
-        toast.info("この画像は自動で読み取れませんでした", {
-          description: "写真は保存できます。項目は手入力してください。",
-        });
-        return;
-      }
       const body = new FormData();
-      body.append("file", new File([small], "cert.jpg", { type: "image/jpeg" }));
+      body.append("file", new File([masked], "cert.jpg", { type: "image/jpeg" }));
       const res = await fetch("/api/vaccinations/extract", { method: "POST", body });
       const data = (await res.json()) as
         | { ok: true; fields: NormalizedExtraction }
@@ -418,6 +388,9 @@ export function VaccinationDialog({
     });
   }
 
+  const aiEnabled = aiProvider !== null;
+  const providerLabel =
+    aiProvider === "gemini" ? "Google（Gemini）" : "Anthropic（Claude）";
   const valid = date !== "" && name.trim() !== "";
   const busy = isPending || reading;
 
@@ -432,11 +405,17 @@ export function VaccinationDialog({
         }
       />
       <DialogContent className="sm:max-w-lg">
+        <MaskEditorDialog
+          file={maskTarget}
+          providerLabel={providerLabel}
+          onCancel={() => setMaskTarget(null)}
+          onConfirm={runExtraction}
+        />
         <DialogHeader>
           <DialogTitle>{record ? "接種記録を編集" : "接種を記録"}</DialogTitle>
           <DialogDescription>
             {aiEnabled && blobEnabled
-              ? "証明書の写真を選ぶと、接種日やワクチン名を自動で読み取ります。"
+              ? "証明書の写真を選ぶと、隠したい部分を塗ってから自動で読み取れます。"
               : "接種した日とワクチン名を記録します。証明書の写真も添付できます。"}
           </DialogDescription>
         </DialogHeader>
@@ -591,7 +570,8 @@ export function VaccinationDialog({
 
               {!aiEnabled && (
                 <p className="text-xs text-muted-foreground">
-                  自動読み取り（ANTHROPIC_API_KEY）は未設定です。写真の添付だけ行えます。
+                  自動読み取りは未設定です（GEMINI_API_KEY / ANTHROPIC_API_KEY）。
+                  写真の添付だけ行えます。
                 </p>
               )}
             </div>

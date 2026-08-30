@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { isAiConfigured } from "@/lib/ai";
+import { aiProvider } from "@/lib/ai";
 import { isBlobConfigured } from "@/lib/blob";
 import {
   SLOT_LABEL,
@@ -104,7 +104,7 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
         <VaccinationSection
           records={await getVaccinations()}
           blobEnabled={isBlobConfigured()}
-          aiEnabled={isAiConfigured()}
+          aiProvider={aiProvider()}
           today={today}
         />
       )}

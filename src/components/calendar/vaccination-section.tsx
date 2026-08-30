@@ -1,5 +1,7 @@
 import { Syringe } from "lucide-react";
 
+import type { AiProvider } from "@/lib/ai";
+
 import { PhotoStrip } from "@/components/calendar/photo-strip";
 import { VaccinationDialog } from "@/components/calendar/vaccination-dialog";
 import { VaccinationDeleteButton } from "@/components/calendar/vaccination-delete-button";
@@ -12,13 +14,13 @@ import type { DateStr } from "@/lib/calendar";
 export function VaccinationSection({
   records,
   blobEnabled,
-  aiEnabled,
+  aiProvider,
   today,
 }: {
   records: VaccinationRow[];
   blobEnabled: boolean;
-  /** ANTHROPIC_API_KEY があるか。無ければ証明書の自動読み取りを出さない */
-  aiEnabled: boolean;
+  /** 読み取りの送り先。null なら自動読み取りの導線を出さない */
+  aiProvider: AiProvider | null;
   today: DateStr;
 }) {
   return (
@@ -37,7 +39,7 @@ export function VaccinationSection({
           <VaccinationDialog
             today={today}
             blobEnabled={blobEnabled}
-            aiEnabled={aiEnabled}
+            aiProvider={aiProvider}
             trigger="接種を記録"
           />
         </div>
@@ -75,7 +77,7 @@ export function VaccinationSection({
                   <VaccinationDialog
                     today={today}
                     blobEnabled={blobEnabled}
-                    aiEnabled={aiEnabled}
+                    aiProvider={aiProvider}
                     record={{
                       id: r.id,
                       date: r.date,

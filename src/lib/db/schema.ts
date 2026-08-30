@@ -17,9 +17,10 @@ import {
  *            vaccine name, clinic name and next-due date are stored. Owner
  *            name, address and phone are visible in the photo but never in a
  *            column — src/lib/vaccination-extract.ts drops any extracted value
- *            that looks like one. NOTE: when ANTHROPIC_API_KEY is set, the
- *            certificate *image* (pixels, including that PII) is sent to the
- *            Anthropic API to be read. See DEPLOY.md.
+ *            that looks like one. NOTE: when GEMINI_API_KEY or
+ *            ANTHROPIC_API_KEY is set, the certificate *image* is sent out to
+ *            be read. The user can black out regions before it is sent, and
+ *            the stored photo keeps the unmasked original. See DEPLOY.md.
  */
 
 export const orders = sqliteTable(
