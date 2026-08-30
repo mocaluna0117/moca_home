@@ -37,6 +37,8 @@ export const config = {
     // handler used parseInt, which reads "1.jpg" as 1) and served the
     // certificate — name, address and phone — to anyone. public/ is empty, so
     // the only static files are these two generated icons, and they are art.
-    "/((?!login|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png).*)",
+    // Each alternative is anchored. Unanchored "login" would also exclude
+    // /loginXXX, and a bare "." matches any character.
+    "/((?!login$|login/|_next/static/|_next/image|favicon\\.ico$|icon\\.svg$|apple-icon\\.png$).*)",
   ],
 };

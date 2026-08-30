@@ -145,17 +145,19 @@ describe("normalizeExtraction — 全体", () => {
     assert.deepEqual(r.dropped, ["次回予定日"]);
   });
 
-  it("住所・電話・メールが混ざった値は捨てる（PIIをDBに入れない）", () => {
+  it("ワクチン名に電話番号が混ざったら捨てる（PIIをDBに入れない）", () => {
+    const r = normalizeExtraction({ name: "6種混合 03-1234-5678" }, TODAY);
+    assert.equal(r.name, null);
+    assert.deepEqual(r.dropped, ["ワクチン名"]);
+  });
+
+  it("動物病院は施設名だけ取り出すので dropped には入らない", () => {
     const r = normalizeExtraction(
-      {
-        clinic: "さくら動物病院 〒123-4567 東京都",
-        name: "6種混合 03-1234-5678",
-      },
+      { clinic: "さくら動物病院 〒123-4567 東京都" },
       TODAY,
     );
-    assert.equal(r.clinic, null);
-    assert.equal(r.name, null);
-    assert.deepEqual(r.dropped.sort(), ["ワクチン名", "動物病院"]);
+    assert.equal(r.clinic, "さくら動物病院");
+    assert.deepEqual(r.dropped, []);
   });
 
   it("プレースホルダは空欄として扱い、dropped にも入れない", () => {
@@ -221,40 +223,42 @@ describe("実際の証明書で起きる読み取り事故", () => {
     assert.equal(toHalfWidth("ロットA－2481"), "ロットA－2481");
   });
 
-  it("病院名に併記された住所・電話ごと捨てる", () => {
-    for (const v of [
-      "さくら動物病院 東京都世田谷区北沢2-1-5",
-      "みどり動物病院 神奈川県横浜市港北区日吉4丁目1番8号",
-      "さくら動物病院 TEL 03(1234)5678",
-      "さくら動物病院 電話 0312345678",
-      "動物病院 中央区銀座1丁目2番3号",
-      "さくら動物病院 〒123-4567",
-      "さくら動物病院 info@example.com",
-    ]) {
+  it("併記された住所・電話・氏名を落とし、施設名だけを残す", () => {
+    const cases: Array<[string, string | null]> = [
+      ["さくら動物病院 東京都世田谷区北沢2-1-5", "さくら動物病院"],
+      ["みどり動物病院 神奈川県横浜市港北区日吉4丁目1番8号", "みどり動物病院"],
+      ["さくら動物病院 TEL 03(1234)5678", "さくら動物病院"],
+      ["さくら動物病院 電話 0312345678", "さくら動物病院"],
+      ["さくら動物病院 〒123-4567", "さくら動物病院"],
+      ["さくら動物病院 info@example.com", "さくら動物病院"],
+      ["さくら動物病院 院長 田中太郎", "さくら動物病院"],
+      ["さくら動物病院 山田花子様", "さくら動物病院"],
+      // 肩書きも敬称も無い素の氏名。列挙型の除外では防げなかったケース
+      ["さくら動物病院 田中太郎", "さくら動物病院"],
+      ["さくら動物病院 山田", "さくら動物病院"],
+      ["Sakura Animal Hospital / Owner: Daiki Kimura", "Sakura Animal Hospital"],
+      // 住所が先に来る場合は施設名まで含んでしまうので、まるごと捨てる
+      ["東京都渋谷区 さくら動物病院", null],
+    ];
+    for (const [input, want] of cases) {
+      assert.equal(normalizeExtraction({ clinic: input }, TODAY).clinic, want, input);
+    }
+  });
+
+  it("施設を表す語が無ければ採らない（誤った値より空欄）", () => {
+    for (const v of ["アニホス", "もみじペットケア", "田中太郎"]) {
       assert.equal(normalizeExtraction({ clinic: v }, TODAY).clinic, null, v);
     }
   });
 
-  it("病院名に併記された院長名・敬称ごと捨てる", () => {
-    for (const v of [
-      "さくら動物病院 院長 田中太郎",
-      "さくら動物病院 山田花子様",
-      "さくら動物病院（獣医師 佐藤）",
-      "田中太郎 殿",
-      "さくら動物病院 鈴木先生",
-    ]) {
-      assert.equal(normalizeExtraction({ clinic: v }, TODAY).clinic, null, v);
-    }
-  });
-
-  it("ふつうの病院名は通す（過検知していないか）", () => {
+  it("ふつうの病院名はそのまま通す（過検知していないか）", () => {
     for (const v of [
       "さくら動物病院",
       "アニマルクリニック代々木",
       "みどりペットクリニック",
       "北海道大学動物医療センター",
       "犬猫病院ハロー",
-      "どうぶつ病院 ノア",
+      "さくら動物病院分院",
     ]) {
       assert.equal(normalizeExtraction({ clinic: v }, TODAY).clinic, v, v);
     }

@@ -201,6 +201,51 @@ function isPlaceholder(input: unknown): boolean {
   return PLACEHOLDERS.has(text) || PLACEHOLDERS.has(text.toLowerCase());
 }
 
+/**
+ * 動物病院の施設名らしき部分。
+ *
+ * 「〜を含んでいたら捨てる」の列挙では氏名を防げない。
+ * 「さくら動物病院 田中太郎」には郵便番号も電話も肩書きも無く、
+ * 人名を列挙し尽くすこともできない（実測で素通りしていた）。
+ * そこで逆にして、**施設を表す語まで**を名前とみなす。
+ */
+const FACILITY =
+  "(?:動物病院|どうぶつ病院|獣医科病院|獣医科医院|動物医療センター|動物医療C|" +
+  "アニマルクリニック|アニマルホスピタル|ペットクリニック|ペットホスピタル|" +
+  "動物クリニック|動物診療所|クリニック|診療所|医院|病院|ホスピタル|" +
+  "Animal Hospital|Animal Clinic|Pet Clinic|Veterinary Clinic|Veterinary Hospital)";
+const FACILITY_RE = new RegExp(`^.*?${FACILITY}`, "i");
+
+/** 施設名のうしろに続いてよい長さ。「〜クリニック代々木」の「代々木」を残すため */
+const BRANCH_MAX = 8;
+
+export function extractClinicName(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const text = toHalfWidth(input)
+    .replace(/[「」『』【】]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (isPlaceholder(text)) return null;
+
+  const head = text.match(FACILITY_RE)?.[0]?.trim();
+  // 施設を表す語が無ければ採らない。任意項目なので、誤った値を入れるより
+  // 空欄のまま人に打たせるほうがよい
+  if (!head) return null;
+
+  const tail = text.slice(head.length);
+  // 空白や区切りで離れて続くものは、氏名・住所とみなして落とす。
+  // くっついて続く短い語（分院・地名）は名前の一部として残す。
+  const keepTail =
+    tail !== "" &&
+    !/^[\s/、,・|｜:：]/.test(tail) &&
+    tail.length <= BRANCH_MAX &&
+    !/\d/.test(tail);
+  const value = keepTail ? text.slice(0, head.length + tail.length) : head;
+
+  if (value.length > 100) return null;
+  return PII_PATTERNS.some((re) => re.test(value)) ? null : value;
+}
+
 function cleanText(input: unknown, maxLength: number): string | null {
   if (typeof input !== "string") return null;
   const text = toHalfWidth(input)
@@ -293,7 +338,7 @@ export function normalizeExtraction(
   if (name === null && wasProvided(raw.name) && !isPlaceholder(raw.name)) {
     dropped.push("ワクチン名");
   }
-  const clinic = cleanText(raw.clinic, 100);
+  const clinic = extractClinicName(raw.clinic);
   if (clinic === null && wasProvided(raw.clinic) && !isPlaceholder(raw.clinic)) {
     dropped.push("動物病院");
   }
