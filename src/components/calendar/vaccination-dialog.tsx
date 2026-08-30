@@ -26,6 +26,7 @@ import {
   saveVaccination,
 } from "@/lib/actions-log";
 import type { AiProvider } from "@/lib/ai";
+import { callAction } from "@/lib/call-action";
 import type { DateStr } from "@/lib/calendar";
 import type { NormalizedExtraction } from "@/lib/vaccination-extract";
 
@@ -329,14 +330,16 @@ export function VaccinationDialog({
    */
   function handleSave() {
     startTransition(async () => {
-      const res = await saveVaccination({
-        id: record?.id,
-        date,
-        name,
-        clinic: clinic.trim() || null,
-        nextDueDate: nextDue.trim() || null,
-        note: note.trim() || null,
-      });
+      const res = await callAction(() =>
+        saveVaccination({
+          id: record?.id,
+          date,
+          name,
+          clinic: clinic.trim() || null,
+          nextDueDate: nextDue.trim() || null,
+          note: note.trim() || null,
+        }),
+      );
       if (!res.ok) {
         toast.error("保存に失敗しました", { description: res.error });
         return;
@@ -360,23 +363,28 @@ export function VaccinationDialog({
             onUploadProgress: ({ percentage }) => setUploading(percentage),
           });
           uploaded = { pathname: blob.pathname };
-          const attached = await attachVaccinationPhoto(res.id, {
-            url: blob.url,
-            pathname: blob.pathname,
-            contentType,
-            sizeBytes: body.size,
-            width,
-            height,
-          });
+          const attached = await callAction(() =>
+            attachVaccinationPhoto(res.id, {
+              url: blob.url,
+              pathname: blob.pathname,
+              contentType,
+              sizeBytes: body.size,
+              width,
+              height,
+            }),
+          );
           if (!attached.ok) {
             failed++;
             // Blob には載ったのに紐づけ先が無い状態を残さない。
             // DB行が無いので、あとから消す手段が無くなる
-            await discardUnattachedPhoto(blob.pathname);
+            await callAction(() => discardUnattachedPhoto(blob.pathname));
           }
         } catch {
           failed++;
-          if (uploaded) await discardUnattachedPhoto(uploaded.pathname);
+          if (uploaded) {
+            const orphan = uploaded.pathname;
+            await callAction(() => discardUnattachedPhoto(orphan));
+          }
         }
       }
       setUploading(null);
@@ -400,7 +408,7 @@ export function VaccinationDialog({
 
   function handleDeletePhoto(photoId: number) {
     startTransition(async () => {
-      const res = await detachVaccinationPhoto(photoId);
+      const res = await callAction(() => detachVaccinationPhoto(photoId));
       if (res.ok) {
         setPhotos((ps) => ps.filter((p) => p.id !== photoId));
         toast.success("写真を削除しました");

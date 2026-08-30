@@ -20,6 +20,7 @@ import {
 import { ProductPreview, Thumb } from "@/components/catalog-picker";
 import { ProductSearchDialog } from "@/components/product-search-dialog";
 import { Input } from "@/components/ui/input";
+import { callAction } from "@/lib/call-action";
 
 /** Serializable draft row passed from the RSC page. */
 export interface ReceivedDraft {
@@ -123,7 +124,7 @@ export function ReceivedBonusDialog({
       note: r.note?.trim() ? r.note.trim() : null,
     }));
     startTransition(async () => {
-      const res = await saveReceivedBonuses(orderId, payload);
+      const res = await callAction(() => saveReceivedBonuses(orderId, payload));
       if (res.ok) {
         toast.success("おまけを記録しました");
         setOpen(false);

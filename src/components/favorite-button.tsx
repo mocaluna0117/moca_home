@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { toggleFavorite } from "@/lib/actions";
 import { markFavorite } from "@/lib/favorite-cache";
 import { cn } from "@/lib/utils";
+import { callAction } from "@/lib/call-action";
 
 /**
  * 星の ON/OFF。
@@ -51,7 +52,7 @@ export function FavoriteButton({
         const next = !optimistic;
         startTransition(async () => {
           setOptimistic(next);
-          const res = await toggleFavorite(productId, next);
+          const res = await callAction(() => toggleFavorite(productId, next));
           if (res.ok) {
             // 同一セッションで開くピッカーのピン留めを合わせる
             markFavorite(productId, next);

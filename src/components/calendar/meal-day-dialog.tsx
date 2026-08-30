@@ -27,6 +27,7 @@ import {
   type MealSlot,
 } from "@/lib/calendar";
 import { copyMealDay, saveMealSlot, type MealEntryInput } from "@/lib/actions-log";
+import { callAction } from "@/lib/call-action";
 
 /** RSC から渡ってくる、その日の記録（シリアライズ可能な形） */
 export interface DayDraft {
@@ -147,7 +148,7 @@ export function MealDayDialog({
           amount: r.amount?.trim() ? r.amount.trim() : null,
           note: r.note?.trim() ? r.note.trim() : null,
         }));
-        const res = await saveMealSlot(draft.date, slot, payload);
+        const res = await callAction(() => saveMealSlot(draft.date, slot, payload));
         if (!res.ok) {
           toast.error("保存に失敗しました", { description: res.error });
           return;
@@ -161,7 +162,7 @@ export function MealDayDialog({
   function handleCopyPrevious() {
     if (!previousDate) return;
     startTransition(async () => {
-      const res = await copyMealDay(previousDate, draft.date);
+      const res = await callAction(() => copyMealDay(previousDate, draft.date));
       if (res.ok) {
         toast.success("前回の記録をコピーしました", {
           description: "内容を確認して必要なら直してください。",

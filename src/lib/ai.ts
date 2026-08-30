@@ -58,6 +58,25 @@ export const MAX_VISION_BYTES = 4 * 1024 * 1024;
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5";
 const TIMEOUT_MS = 25_000;
+/**
+ * 全体の締切。1回ぶんのタイムアウトを縮めても、SDK は上流の retry-after を
+ * 尊重して待つので、合計は maxDuration=60 を超えうる（実測 60.3 秒）。
+ * Function が強制終了すると応答が返らず、クライアントには不明なエラーになる。
+ * ここで必ず自分から打ち切って、手入力に落とせるメッセージを返す。
+ */
+const DEADLINE_MS = 40_000;
+
+/** 締切を過ぎたら fallback を返す。work 側は放置してよい（Function ごと終わる） */
+function withDeadline<T>(work: Promise<T>, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      console.error("[vaccination-extract] 締切超過で打ち切り");
+      resolve(fallback);
+    }, DEADLINE_MS);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
 
 const SYSTEM_PROMPT = `あなたはペットの予防接種証明書を読み取る係です。
 画像から次の4項目だけを読み取り、指定されたJSONで返してください。
@@ -248,7 +267,9 @@ export async function extractVaccinationFromImage(
 ): Promise<ExtractResult> {
   const provider = aiProvider();
   if (provider === null) return { ok: false, reason: "not-configured" };
-  return provider === "gemini"
-    ? extractWithGemini(base64, mediaType)
-    : extractWithAnthropic(base64, mediaType);
+  const work =
+    provider === "gemini"
+      ? extractWithGemini(base64, mediaType)
+      : extractWithAnthropic(base64, mediaType);
+  return withDeadline<ExtractResult>(work, { ok: false, reason: "upstream" });
 }
