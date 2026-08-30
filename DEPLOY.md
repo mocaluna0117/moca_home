@@ -100,7 +100,10 @@ npm run sync:prod -- --catalog     # .env.turso を読んで本番DBに書き込
 1. Vercel プロジェクトの **Storage** → **Create Database** → **Blob**
 2. アクセスは **Private** を選ぶ（証明書には氏名・住所・動物病院名が写るため）
 3. 作成すると `BLOB_READ_WRITE_TOKEN` が自動で環境変数に入る
-4. 手元でも写真を扱うなら `npx vercel env pull` で `.env.local` に取り込む
+4. 手元でも写真を扱うなら、ストアの **Projects** タブ → ⋯ → **Update Project Connection** で
+   **Development** にもチェックを入れてから `npx vercel env pull` する
+   （Development が未接続だと `BLOB_READ_WRITE_TOKEN` は本番にしか入らず、
+   手元では写真UIが出ません。文字情報の記録は使えます）
 
 | 変数 | 値 |
 |---|---|
