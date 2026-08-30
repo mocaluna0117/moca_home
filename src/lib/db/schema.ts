@@ -4,6 +4,7 @@ import {
   integer,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 /**
@@ -284,6 +285,107 @@ export const vaccinationPhotos = sqliteTable(
   },
   (t) => [index("vaccination_photos_vaccination_id_idx").on(t.vaccinationId)],
 );
+
+// ------------------------------------------------------------------ ケア記録
+
+/**
+ * トリミングと通院を1つのテーブルにまとめる。
+ *
+ * 形が完全に同じ（日付・行き先・明細・合計・メモ）で、しかも
+ * 「今年ケアにいくら使ったか」を種類をまたいで数えたい。meal_entries が
+ * 朝/夜/おやつを slot で1テーブルにまとめているのと同じ判断。
+ */
+export const CARE_KINDS = ["trimming", "hospital"] as const;
+export type CareKind = (typeof CARE_KINDS)[number];
+
+export const careVisits = sqliteTable(
+  "care_visits",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    kind: text("kind").$type<CareKind>().notNull(),
+    /** 行った日, DATE ONLY */
+    date: text("date").notNull(),
+    /** 店名・病院名（任意）。施設名であって個人名は入れない */
+    place: text("place"),
+    /**
+     * 支払い合計。明細の合計と必ずしも一致しない（割引・端数調整があるため）
+     * ので、計算に頼らず明示的に持つ。未入力なら null。
+     */
+    totalYen: integer("total_yen"),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("care_visits_kind_date_idx").on(t.kind, t.date),
+    index("care_visits_date_idx").on(t.date),
+  ],
+);
+
+/** 明細の1行。order_items と同じく、親が消えたら一緒に消す */
+export const careItems = sqliteTable(
+  "care_items",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    visitId: integer("visit_id")
+      .notNull()
+      .references(() => careVisits.id, { onDelete: "cascade" }),
+    /** 明細内の表示順 */
+    seq: integer("seq").notNull().default(0),
+    /** 例 "シャンプーコース" "混合ワクチン" "内服薬 7日分" */
+    name: text("name").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    /** その行の金額（税込・円）。書かれていない明細もあるので null 許容 */
+    amountYen: integer("amount_yen"),
+  },
+  (t) => [index("care_items_visit_id_idx").on(t.visitId)],
+);
+
+/**
+ * フィラリア予防薬。**予定と実績を1行にまとめる。**
+ *
+ * 予定を先に作り、飲ませたら given_date を埋める。分けると
+ * 「予定はあるが未実施」を出すのに毎回 join が要るうえ、
+ * リマインドの判定（未実施かつ未送信）が1行で完結しなくなる。
+ *
+ * - reminded_at : リマインドを送った時刻。**送る前に埋める**。
+ *   二重送信（同じメールが何通も届く）のほうが、送り損ね
+ *   （画面には予定が残る）より取り返しがつかないため。
+ * - scheduled_date は一意（heartworm_doses_scheduled_date_unique）。
+ *   1匹前提のスキーマなので同じ日に2件は作らない。
+ *   一括生成をやり直しても重複しない（onConflictDoNothing が効く）。
+ */
+export const heartwormDoses = sqliteTable(
+  "heartworm_doses",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** 飲ませる予定の日, DATE ONLY */
+    scheduledDate: text("scheduled_date").notNull(),
+    /** 実際に飲ませた日, DATE ONLY。null なら未実施 */
+    givenDate: text("given_date"),
+    /** 20&20 の商品なら紐づける。ふつうは病院で買うので null */
+    productId: integer("product_id").references(() => products.id),
+    /** 薬の名前（スナップショット）。例 "モキシデック チュアブル" */
+    label: text("label"),
+    note: text("note"),
+    /** リマインドを送った時刻（+09:00 付き ISO）。null なら未送信 */
+    remindedAt: text("reminded_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    // 列の .unique() ではなく名前付きのユニークインデックスにする。
+    // drizzle-kit push は CREATE TABLE の UNIQUE もインデックスも作り落とす
+    // ことがあり（実際に落ちた）、scripts/push-log-tables.ts は
+    // sqlite_master の CREATE 文を replay するので、名前が付いていれば拾える。
+    uniqueIndex("heartworm_doses_scheduled_date_unique").on(t.scheduledDate),
+    index("heartworm_doses_given_date_idx").on(t.givenDate),
+  ],
+);
+
+export type CareVisit = typeof careVisits.$inferSelect;
+export type CareItem = typeof careItems.$inferSelect;
+export type HeartwormDose = typeof heartwormDoses.$inferSelect;
 
 export type MealEntry = typeof mealEntries.$inferSelect;
 export type Vaccination = typeof vaccinations.$inferSelect;

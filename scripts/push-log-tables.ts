@@ -17,6 +17,9 @@ const PUSH_TABLES = [
   "vaccinations",
   "vaccination_photos",
   "product_favorites",
+  "care_visits",
+  "care_items",
+  "heartworm_doses",
 ] as const;
 
 function requireEnv(name: string): string {
