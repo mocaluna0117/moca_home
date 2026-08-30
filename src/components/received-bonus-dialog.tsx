@@ -22,6 +22,7 @@ import {
   ProductPreview,
   Thumb,
   useCatalog,
+  useFavoriteIds,
 } from "@/components/catalog-picker";
 import { Input } from "@/components/ui/input";
 
@@ -87,6 +88,7 @@ export function ReceivedBonusDialog({
   );
   const [isPending, startTransition] = useTransition();
   const catalog = useCatalog(open);
+  const favoriteIds = useFavoriteIds(open);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -187,6 +189,7 @@ export function ReceivedBonusDialog({
                     <CatalogPicker
                       catalog={catalog}
                       query={row.query}
+                      favoriteIds={favoriteIds}
                       onPreview={(c) =>
                         setPreview({ rowKey: row.key, productId: c.id })
                       }

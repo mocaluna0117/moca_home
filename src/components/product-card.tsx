@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { formatRuleShort } from "@/components/bonus-badge";
+import { FavoriteButton } from "@/components/favorite-button";
 import { ProductName } from "@/components/product-name";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,16 @@ export function ProductCard({ product }: { product: ProductSummary }) {
             販売終了
           </Badge>
         )}
+        {product.productId !== null && (
+          // z-20 + relative でカード全体のリンクより手前に出す
+          <span className="absolute right-1 bottom-1 z-20 rounded-md bg-background/90">
+            <FavoriteButton
+              productId={product.productId}
+              isFavorite={product.isFavorite}
+              size="sm"
+            />
+          </span>
+        )}
         {product.bonusRule && (
           <Badge
             variant="outline"
@@ -67,7 +78,7 @@ export function ProductCard({ product }: { product: ProductSummary }) {
   );
 
   const className =
-    "flex flex-col overflow-hidden p-0 transition-colors hover:border-foreground/20";
+    "relative isolate flex flex-col overflow-hidden p-0 transition-colors hover:border-foreground/20";
 
   return product.productId !== null ? (
     <Link href={`/products/${product.productId}`} className="contents">

@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
 import { nowJstIso } from "@/lib/format";
-import { orders, products, receivedBonuses } from "@/lib/db/schema";
+import {
+  orders,
+  productFavorites,
+  products,
+  receivedBonuses,
+} from "@/lib/db/schema";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -175,6 +180,66 @@ export async function deleteReceivedBonus(
     return {
       ok: false,
       error: err instanceof Error ? err.message : "削除に失敗しました",
+    };
+  }
+}
+
+// ------------------------------------------------------------- お気に入り
+
+/**
+ * 星の ON/OFF。**このアプリの DB にだけ書く** — 20and20.pet へは
+ * POST も DELETE も送らない。
+ *
+ * 行は決して消さない。OFF は starred=false の upsert（= 墓標）にする。
+ * 消すと「一度も星をつけていない」と区別できなくなり、次回のショップ
+ * 取り込みが外したはずの星を復活させてしまう。
+ *
+ * shop_favorite / source には触らない — あれは取り込みが持つ列
+ * （取り込みが starred に触らないのと対称）。
+ */
+export async function toggleFavorite(
+  productId: number,
+  next: boolean,
+): Promise<{ ok: true; starred: boolean } | { ok: false; error: string }> {
+  try {
+    if (!Number.isInteger(productId)) {
+      return { ok: false, error: "商品IDが不正です" };
+    }
+
+    // fetch_status は問わない — 販売終了の商品を「また出たら買いたい」と
+    // して星に残すのは正当な使い方
+    const product = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(eq(products.id, productId))
+      .get();
+    if (!product) return { ok: false, error: "商品が見つかりません" };
+
+    await db
+      .insert(productFavorites)
+      .values({
+        productId,
+        starred: next,
+        shopFavorite: false,
+        source: "local",
+        starredAt: now(),
+        createdAt: now(),
+        updatedAt: now(),
+      })
+      .onConflictDoUpdate({
+        target: productFavorites.productId,
+        set: { starred: next, starredAt: now(), updatedAt: now() },
+      })
+      .run();
+
+    revalidatePath("/");
+    revalidatePath(`/products/${productId}`);
+    revalidatePath("/favorites");
+    return { ok: true, starred: next };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "保存に失敗しました",
     };
   }
 }

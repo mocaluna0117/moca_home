@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 const SECTIONS = [
   { href: "/", label: "購入履歴" },
   { href: "/calendar", label: "カレンダー" },
+  { href: "/favorites", label: "お気に入り" },
 ] as const;
 
 /** ヘッダーのセクション切替。アプリのトップレベルは購入履歴とカレンダーの2つ。 */

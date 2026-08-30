@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PackageOpen, SearchX } from "lucide-react";
+import { PackageOpen, SearchX, Star } from "lucide-react";
 
 import { OrderCard } from "@/components/order-card";
 import { ProductCard } from "@/components/product-card";
@@ -25,6 +25,8 @@ export default async function HomePage({
   const view: View = rawView === "products" ? "products" : "orders";
   const rawQ = Array.isArray(params.q) ? params.q[0] : params.q;
   const q = rawQ?.trim() || undefined;
+  const rawFav = Array.isArray(params.fav) ? params.fav[0] : params.fav;
+  const favoritesOnly = rawFav === "1";
 
   const stats = await getStats();
 
@@ -44,7 +46,9 @@ export default async function HomePage({
   const [orders, catalogState, productSummaries] = await Promise.all([
     view === "orders" ? getOrders(q) : Promise.resolve([]),
     getCatalogState(),
-    view === "products" ? getProductSummaries(q) : Promise.resolve([]),
+    view === "products"
+      ? getProductSummaries(q, { favoritesOnly })
+      : Promise.resolve([]),
   ]);
   const catalogSynced = catalogState.count > 100;
   const isEmptyResult =
@@ -59,9 +63,19 @@ export default async function HomePage({
     const search = new URLSearchParams();
     if (value === "products") search.set("view", "products");
     if (q) search.set("q", q);
+    if (favoritesOnly && value === "products") search.set("fav", "1");
     const s = search.toString();
     return s ? `/?${s}` : "/";
   };
+
+  // 「お気に入りだけ」トグル（?q= と併用できる）
+  const favHref = (() => {
+    const search = new URLSearchParams();
+    search.set("view", "products");
+    if (q) search.set("q", q);
+    if (!favoritesOnly) search.set("fav", "1");
+    return `/?${search.toString()}`;
+  })();
 
   return (
     <div className="flex flex-col gap-5">
@@ -90,7 +104,28 @@ export default async function HomePage({
             </Link>
           ))}
         </nav>
-        <SearchInput />
+        <div className="flex items-center gap-2">
+          {view === "products" && (
+            <Link
+              href={favHref}
+              scroll={false}
+              aria-pressed={favoritesOnly}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
+                favoritesOnly
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Star
+                className={cn("size-4", favoritesOnly && "fill-background")}
+                aria-hidden="true"
+              />
+              お気に入り
+            </Link>
+          )}
+          <SearchInput />
+        </div>
       </div>
 
       {isEmptyResult ? (
@@ -120,6 +155,16 @@ export default async function HomePage({
           <p className="text-xs text-muted-foreground tabular-nums">
             {productSummaries.length}種類の商品
           </p>
+          {favoritesOnly && (
+            <p className="text-xs text-muted-foreground">
+              購入・おまけの履歴があるお気に入りだけを表示しています。
+              買ったことのないお気に入りは{" "}
+              <Link href="/favorites" className="underline">
+                お気に入り一覧
+              </Link>{" "}
+              にあります。
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
             {productSummaries.map((product) => (
               <ProductCard key={product.key} product={product} />

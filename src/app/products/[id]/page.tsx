@@ -18,9 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { FavoriteButton } from "@/components/favorite-button";
 import { ProductMealHistory } from "@/components/product-meal-history";
 import { parseBonusRule } from "@/lib/bonus";
-import { getProductDetail } from "@/lib/queries";
+import { getFavoriteProductIds, getProductDetail } from "@/lib/queries";
 import { getProductMealSummary } from "@/lib/queries-log";
 import { formatDate, formatYen, parseJsonArray } from "@/lib/format";
 
@@ -35,9 +36,10 @@ export default async function ProductPage({
   const productId = Number.parseInt(id, 10);
   if (!Number.isInteger(productId)) notFound();
 
-  const [{ product, snapshot, history }, meal] = await Promise.all([
+  const [{ product, snapshot, history }, meal, favoriteIds] = await Promise.all([
     getProductDetail(productId),
     getProductMealSummary(productId),
+    getFavoriteProductIds(),
   ]);
   if (!product && !snapshot) notFound();
 
@@ -77,9 +79,15 @@ export default async function ProductPage({
         </div>
 
         <div className="flex flex-col gap-3">
-          <h1 className="text-lg leading-snug font-semibold">
-            <ProductName name={name} dim={false} />
-          </h1>
+          <div className="flex items-start gap-2">
+            <h1 className="flex-1 text-lg leading-snug font-semibold">
+              <ProductName name={name} dim={false} />
+            </h1>
+            <FavoriteButton
+              productId={productId}
+              isFavorite={favoriteIds.has(productId)}
+            />
+          </div>
           <p className="text-xl font-semibold tabular-nums">
             {formatYen(priceYen)}
             <span className="ml-1 text-xs font-normal text-muted-foreground">

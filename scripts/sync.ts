@@ -65,6 +65,8 @@ async function main() {
         return write(`注文一覧 ${p.page}/${p.lastPage} ページ`);
       case "orders":
         return write(`注文詳細 ${p.done}/${p.total}`);
+      case "favorites":
+        return write(`お気に入り ${p.seen}件を確認`);
       case "products":
         return write(`商品情報 ${p.done}/${p.total}`);
       case "done":

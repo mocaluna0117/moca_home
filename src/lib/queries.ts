@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, like, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, like, sql } from "drizzle-orm";
 
 import {
   computeOrderBonuses,
@@ -14,11 +14,13 @@ import { parseJsonArray } from "@/lib/format";
 import {
   orderItems,
   orders,
+  productFavorites,
   products,
   receivedBonuses,
   syncRuns,
   type Order,
   type OrderItem,
+  type FavoriteSource,
   type Product,
   type ReceivedBonus,
 } from "@/lib/db/schema";
@@ -124,6 +126,16 @@ export async function getOrders(q?: string): Promise<OrderWithItems[]> {
   );
 }
 
+/** 星がついている商品ID。数行なので毎回引いてよい。 */
+export async function getFavoriteProductIds(): Promise<Set<number>> {
+  const rows = await db
+    .select({ productId: productFavorites.productId })
+    .from(productFavorites)
+    .where(eq(productFavorites.starred, true))
+    .all();
+  return new Set(rows.map((r) => r.productId));
+}
+
 export interface ProductSummary {
   /** products.id when the site linked one, else null */
   productId: number | null;
@@ -141,14 +153,21 @@ export interface ProductSummary {
   receivedCount: number;
   /** true when the product only ever arrived as a freebie (never purchased). */
   freebieOnly: boolean;
+  /** アプリ内お気に入り。自由入力行（product_id なし）は常に false。 */
+  isFavorite: boolean;
 }
 
 /**
  * Purchase history grouped by product. Deduped on product_id when present,
  * otherwise on the snapshot name (deleted products lose their link).
  */
-export async function getProductSummaries(q?: string): Promise<ProductSummary[]> {
+export async function getProductSummaries(
+  q?: string,
+  opts?: { favoritesOnly?: boolean },
+): Promise<ProductSummary[]> {
   const term = q?.trim();
+  // 追加は1本、返るのは数行。既存の grouping の中で参照するだけ。
+  const favoriteIds = await getFavoriteProductIds();
 
   const rows = await db
     .select({
@@ -195,6 +214,7 @@ export async function getProductSummaries(q?: string): Promise<ProductSummary[]>
       bonusRule: parseBonusRule(r.productName),
       receivedCount: 0,
       freebieOnly: false,
+      isFavorite: r.productId !== null && favoriteIds.has(r.productId),
       orderIds: new Set([r.orderId]),
     });
   }
@@ -239,17 +259,103 @@ export async function getProductSummaries(q?: string): Promise<ProductSummary[]>
       bonusRule: parseBonusRule(f.label),
       receivedCount: f.quantity,
       freebieOnly: true,
+      isFavorite: f.productId !== null && favoriteIds.has(f.productId),
       orderIds: new Set(),
     });
   }
 
-  return [...map.values()]
+  const list = [...map.values()]
     .map((entry): ProductSummary => {
       const { orderIds, ...summary } = entry;
       void orderIds;
       return summary;
     })
     .sort((a, b) => (a.lastOrderedAt < b.lastOrderedAt ? 1 : -1));
+
+  // 絞り込みはメモリで。この配列は order_items と received_bonuses の
+  // 2クエリから合流するので、SQL 側で絞ると両方に条件を撒く羽目になる。
+  return opts?.favoritesOnly ? list.filter((s) => s.isFavorite) : list;
+}
+
+export interface FavoriteProduct {
+  productId: number;
+  name: string;
+  imageUrl: string | null;
+  priceYen: number | null;
+  fetchStatus: Product["fetchStatus"] | null;
+  bonusRule: BonusRule | null;
+  /** 星をつけた瞬間（並び順の軸） */
+  starredAt: string | null;
+  /** 最後の取り込み時点でショップのお気に入りにも入っていた */
+  inShop: boolean;
+  source: FavoriteSource;
+  /** 未購入なら 0 / null */
+  orderCount: number;
+  totalQuantity: number;
+  lastOrderedAt: string | null;
+}
+
+/**
+ * お気に入り一覧。星はカタログ全体に付くので order_items からは組めない
+ * （買ったことのない商品が主役になりうる）。起点は product_favorites。
+ */
+export async function getFavorites(): Promise<FavoriteProduct[]> {
+  const rows = await db
+    .select({
+      productId: productFavorites.productId,
+      starredAt: productFavorites.starredAt,
+      inShop: productFavorites.shopFavorite,
+      source: productFavorites.source,
+      name: products.name,
+      priceYen: products.priceYen,
+      imageUrls: products.imageUrls,
+      fetchStatus: products.fetchStatus,
+    })
+    .from(productFavorites)
+    .leftJoin(products, eq(products.id, productFavorites.productId))
+    .where(eq(productFavorites.starred, true))
+    .orderBy(desc(productFavorites.starredAt))
+    .all();
+  if (rows.length === 0) return [];
+
+  // 購入実績は集計1本を左から貼る（N+1にしない）
+  const stats = await db
+    .select({
+      productId: orderItems.productId,
+      orderCount: sql<number>`count(distinct ${orderItems.orderId})`,
+      totalQuantity: sql<number>`coalesce(sum(${orderItems.quantity}), 0)`,
+      lastOrderedAt: sql<string>`max(${orders.orderedAt})`,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(
+      inArray(
+        orderItems.productId,
+        rows.map((r) => r.productId),
+      ),
+    )
+    .groupBy(orderItems.productId)
+    .all();
+  const byProduct = new Map(stats.map((s) => [s.productId, s]));
+
+  return rows.map((r) => {
+    const st = byProduct.get(r.productId);
+    const name = r.name ?? `商品 ${r.productId}`;
+    return {
+      productId: r.productId,
+      name,
+      imageUrl: firstImage(r.imageUrls),
+      priceYen: r.priceYen,
+      fetchStatus: r.fetchStatus,
+      bonusRule: parseBonusRule(name),
+      starredAt: r.starredAt,
+      inShop: r.inShop,
+      source: r.source,
+      orderCount: Number(st?.orderCount ?? 0),
+      totalQuantity: Number(st?.totalQuantity ?? 0),
+      lastOrderedAt: st?.lastOrderedAt ?? null,
+    };
+  });
 }
 
 export async function getOrder(id: string): Promise<OrderWithItems | null> {

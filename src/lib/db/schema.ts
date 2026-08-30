@@ -138,6 +138,52 @@ export type SyncRun = typeof syncRuns.$inferSelect;
 
 export type ReceivedBonus = typeof receivedBonuses.$inferSelect;
 
+// ------------------------------------------------------------- お気に入り
+//
+// アプリ内のお気に入り。星の ON/OFF は **このアプリだけ** に書き、
+// 20and20.pet へは一切書き込まない（POST/DELETE を送らない）。
+// 同期はショップの /mypage/favorite を「初期値として取り込む」だけ。
+//
+// 行は決して削除しない。starred=false は「ユーザーが意図的に外した」墓標で、
+// これが無いと次の取り込みが外したはずの星を復活させてしまう。
+// 「一度も星をつけていない」= 行が無い、「外した」= starred=false の行がある。
+//
+// 列の書き手を分ける: 取り込みは starred に触らず、toggleFavorite は
+// shopFavorite / source に触らない（src/lib/favorites.ts に規則と検証あり）。
+
+/** local = このアプリで星をつけた / shop = ショップから取り込んだ */
+export type FavoriteSource = "local" | "shop";
+
+export const productFavorites = sqliteTable(
+  "product_favorites",
+  {
+    /**
+     * 1商品 = 高々1行。代理キーを置かず product_id 自体を PK にする
+     * （integer PRIMARY KEY は rowid の別名なので追加インデックス不要）。
+     */
+    productId: integer("product_id")
+      .primaryKey()
+      .references(() => products.id, { onDelete: "cascade" }),
+    /** 現在の星。false = 明示的に外した墓標（取り込みで復活させない） */
+    starred: integer("starred", { mode: "boolean" }).notNull().default(true),
+    /** 最後の取り込み時点でショップのお気に入りにも入っていたか */
+    shopFavorite: integer("shop_favorite", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    /** この行ができた経緯（以後書き換えない） */
+    source: text("source").$type<FavoriteSource>().notNull().default("local"),
+    /** 星を最後に切り替えた瞬間（ON/OFF どちらでも更新） */
+    starredAt: text("starred_at"),
+    /** ショップのお気に入り一覧で最後に見た瞬間 */
+    shopSeenAt: text("shop_seen_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("product_favorites_starred_idx").on(t.starred, t.starredAt)],
+);
+
+export type ProductFavorite = typeof productFavorites.$inferSelect;
+
 // ---------------------------------------------------------------- 飼育記録
 //
 // 以下3テーブルの `date` / `next_due_date` は、他のカラムと違い

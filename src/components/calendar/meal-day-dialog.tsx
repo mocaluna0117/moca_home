@@ -8,6 +8,7 @@ import {
   CatalogPicker,
   Thumb,
   useCatalog,
+  useFavoriteIds,
 } from "@/components/catalog-picker";
 import { ProductName } from "@/components/product-name";
 import { Button } from "@/components/ui/button";
@@ -116,6 +117,7 @@ export function MealDayDialog({
   const [slots, setSlots] = useState<Slots>(() => toSlots(draft));
   const [isPending, startTransition] = useTransition();
   const catalog = useCatalog(open);
+  const favoriteIds = useFavoriteIds(open);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -242,6 +244,7 @@ export function MealDayDialog({
                                 query: "",
                               })
                             }
+                            favoriteIds={favoriteIds}
                             onPreview={() => {}}
                           />
                           <button

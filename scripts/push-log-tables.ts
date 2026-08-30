@@ -1,5 +1,6 @@
 /**
- * 飼育記録の3テーブルを、ローカルDBの定義そのまま本番へ作成する。
+ * アプリ独自のテーブル（飼育記録・お気に入り）を、ローカルDBの定義そのまま
+ * 対象DBへ作成する。
  *
  *   npm run db:push:log            # ローカル（no-op）
  *   TURSO_DATABASE_URL=… TURSO_AUTH_TOKEN=… npm run db:push:log
@@ -11,7 +12,12 @@
  */
 import { createClient } from "@libsql/client";
 
-const LOG_TABLES = ["meal_entries", "vaccinations", "vaccination_photos"] as const;
+const PUSH_TABLES = [
+  "meal_entries",
+  "vaccinations",
+  "vaccination_photos",
+  "product_favorites",
+] as const;
 
 function requireEnv(name: string): string {
   const v = process.env[name]?.trim();
@@ -37,16 +43,16 @@ async function main() {
   console.log(`定義元: ${localUrl}`);
   console.log(`対象  : ${targetUrl}\n`);
 
-  const placeholders = LOG_TABLES.map(() => "?").join(", ");
+  const placeholders = PUSH_TABLES.map(() => "?").join(", ");
   const ddl = await local.execute({
     sql: `select type, name, sql from sqlite_master
           where sql is not null and (name in (${placeholders}) or tbl_name in (${placeholders}))
           order by case type when 'table' then 0 else 1 end`,
-    args: [...LOG_TABLES, ...LOG_TABLES],
+    args: [...PUSH_TABLES, ...PUSH_TABLES],
   });
 
   if (ddl.rows.length === 0) {
-    throw new Error("ローカルDBに飼育記録のテーブルがありません（先に npm run db:push）");
+    throw new Error("ローカルDBに対象テーブルがありません（先に npm run db:push）");
   }
 
   for (const row of ddl.rows) {
@@ -70,7 +76,7 @@ async function main() {
   console.log("  テーブル:", tables.join(", "));
   console.log("  インデックス:", indexes.length, "本");
 
-  const missing = LOG_TABLES.filter((t) => !tables.includes(t));
+  const missing = PUSH_TABLES.filter((t) => !tables.includes(t));
   local.close();
   target.close();
 

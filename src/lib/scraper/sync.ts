@@ -14,6 +14,7 @@ import {
 } from "./client";
 import { login, withSession } from "./login";
 import { fetchOrderDetail, fetchOrderListPage } from "./orders";
+import { importShopFavorites } from "./favorites";
 import { fetchProduct } from "./products";
 import {
   SyncBusyError,
@@ -31,6 +32,7 @@ export type SyncProgress =
   | { phase: "login" }
   | { phase: "list"; page: number; lastPage: number }
   | { phase: "orders"; done: number; total: number }
+  | { phase: "favorites"; seen: number }
   | { phase: "products"; done: number; total: number }
   | { phase: "done"; summary: SyncSummary };
 
@@ -41,6 +43,11 @@ export interface SyncSummary {
   productsOk: number;
   productsNotFound: number;
   productsError: number;
+  /** ショップから取り込んだお気に入り */
+  favoritesSeen: number;
+  favoritesAdded: number;
+  /** ローカルで外していたため復活させなかった数 */
+  favoritesSkipped: number;
 }
 
 const now = () => new Date().toISOString();
@@ -60,6 +67,9 @@ export async function runSync(
     productsOk: 0,
     productsNotFound: 0,
     productsError: 0,
+    favoritesSeen: 0,
+    favoritesAdded: 0,
+    favoritesSkipped: 0,
   };
 
   try {
@@ -190,6 +200,25 @@ export async function runSync(
       summary.ordersDetailed++;
       await heartbeat(run.id, summary.ordersDetailed);
       onProgress?.({ phase: "orders", done: index + 1, total });
+    }
+
+    // --- phase 2.5: ショップのお気に入りを取り込む
+    // 商品エンリッチ(phase 3)の *前* に置くのが要点。未知の商品IDに
+    // products スタブを作るので、同じ実行の中で名前と画像まで埋まる。
+    // 追加リクエストは1ページ = 1回だけ。
+    try {
+      const fav = await withSession(client, config, () =>
+        importShopFavorites(client),
+      );
+      summary.favoritesSeen = fav.seen;
+      summary.favoritesAdded = fav.added;
+      summary.favoritesSkipped = fav.skipped;
+      onProgress?.({ phase: "favorites", seen: fav.seen });
+    } catch (err) {
+      // お気に入りは補助情報。取得できなくても同期全体は止めない
+      console.warn(
+        `お気に入りの取り込みに失敗しました: ${err instanceof Error ? err.message : err}`,
+      );
     }
 
     // --- phase 3: product enrichment (never retries known-gone products)

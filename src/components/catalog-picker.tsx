@@ -11,7 +11,7 @@
  * - 商品詳細は開いたときだけ /api/catalog/[id] を叩き、こちらもキャッシュ
  */
 
-import { ArrowLeft, ExternalLink, Gift, Info } from "lucide-react";
+import { ArrowLeft, ExternalLink, Gift, Info, Star } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
@@ -31,6 +31,18 @@ export interface CatalogItem {
 
 // モジュールレベルのキャッシュ: ブラウザのセッション中に1回だけ取得する
 let catalogCache: CatalogItem[] | null = null;
+
+/**
+ * 星がついた商品ID。本体（約300KB）と違い軽いので、ダイアログを開くたびに
+ * 取り直す（同期で増えた星もリロード無しで拾える）。
+ */
+let favoriteIdsCache: Set<number> = new Set();
+
+/** 星ボタンを押した直後に同一セッションのピン留めを合わせる。 */
+export function markFavorite(productId: number, starred: boolean): void {
+  if (starred) favoriteIdsCache.add(productId);
+  else favoriteIdsCache.delete(productId);
+}
 
 /** ダイアログを開いたときに呼ぶ。取得済みなら即返す。 */
 export function useCatalog(open: boolean): CatalogItem[] | null {
@@ -54,6 +66,28 @@ export function useCatalog(open: boolean): CatalogItem[] | null {
   return catalog;
 }
 
+/** 開くたびに軽いエンドポイントから星を取り直す。 */
+export function useFavoriteIds(open: boolean): Set<number> {
+  const [ids, setIds] = useState<Set<number>>(favoriteIdsCache);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    fetch("/api/favorites")
+      .then((res) => res.json())
+      .then((data: { ids: number[] }) => {
+        favoriteIdsCache = new Set(data.ids);
+        if (alive) setIds(favoriteIdsCache);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [open]);
+
+  return ids;
+}
+
 const PICKER_LIMIT = 50;
 
 export function CatalogPicker({
@@ -61,11 +95,14 @@ export function CatalogPicker({
   query,
   onSelect,
   onPreview,
+  favoriteIds,
 }: {
   catalog: CatalogItem[] | null;
   query: string;
   onSelect: (item: CatalogItem) => void;
   onPreview: (item: CatalogItem) => void;
+  /** 星がついた商品。検索していないときは先頭に固定表示する */
+  favoriteIds?: Set<number>;
 }) {
   if (catalog === null) {
     return (
@@ -76,7 +113,20 @@ export function CatalogPicker({
   const term = query.trim();
   const matches =
     term === "" ? catalog : catalog.filter((c) => c.name.includes(term));
-  const shown = matches.slice(0, PICKER_LIMIT);
+
+  // 検索していないときは、お気に入りを先頭に固定する。毎日の食事記録で
+  // 1,120件から探し直さずに済むのがこの機能の主目的。
+  // 検索を始めたら絞り込みが主役なので固定は解除し、代わりに該当する
+  // お気に入りを上に寄せる（見失わないように）。
+  const favs = favoriteIds ?? new Set<number>();
+  const pinned = term === "" ? matches.filter((c) => favs.has(c.id)) : [];
+  const rest =
+    term === ""
+      ? matches.filter((c) => !favs.has(c.id))
+      : [...matches].sort(
+          (a, b) => Number(favs.has(b.id)) - Number(favs.has(a.id)),
+        );
+  const shown = [...pinned, ...rest].slice(0, PICKER_LIMIT);
 
   return (
     <>
@@ -90,6 +140,12 @@ export function CatalogPicker({
             >
               <Thumb src={c.imageUrl} alt="" />
               <span className="flex-1 text-sm leading-snug break-words">
+                {favs.has(c.id) && (
+                  <Star
+                    className="mr-1 inline size-3 fill-foreground align-[-1px] text-foreground"
+                    aria-label="お気に入り"
+                  />
+                )}
                 <ProductName name={c.name} />
               </span>
               <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
@@ -117,7 +173,9 @@ export function CatalogPicker({
       </ul>
       <p className="text-xs text-muted-foreground tabular-nums">
         {term === ""
-          ? `全 ${catalog.length} 件（新しい順に ${shown.length} 件を表示・スクロールできます）`
+          ? pinned.length > 0
+            ? `お気に入り ${pinned.length} 件を先頭に表示 ・ 全 ${catalog.length} 件`
+            : `全 ${catalog.length} 件（新しい順に ${shown.length} 件を表示・スクロールできます）`
           : `「${term}」に一致 ${matches.length} 件` +
             (matches.length > shown.length
               ? `（上位 ${shown.length} 件を表示）`

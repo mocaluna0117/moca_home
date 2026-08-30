@@ -374,3 +374,109 @@ export function parseProductPage(html: string, origin: string): ParsedProduct {
 
   return { name, priceYen, descriptionHtml, category, tags, imageUrls };
 }
+
+// ------------------------------------------------------------- お気に入り
+
+export interface ParsedFavoriteItem {
+  productId: number;
+  /** 参考値。取り込みは商品IDしか使わない（表示名は自分の products が権威） */
+  name: string | null;
+  imageUrl: string | null;
+}
+
+export interface ParsedFavoritePage {
+  /** 「N件のお気に入りがあります」の N。読めなければ null */
+  totalCount: number | null;
+  /** ページャの最大 pageno。ページャが無ければ 1 */
+  lastPage: number;
+  items: ParsedFavoriteItem[];
+}
+
+/**
+ * /mypage/favorite。
+ *
+ * 他の一覧と違い「0件」が正当な状態なので、items が空でも落とさない。
+ * セレクタ死亡の判定はコンテナの有無に置く:
+ *  - div.ec-favoriteRole が無い      → SITE_LAYOUT_CHANGED
+ *  - ヘッダーが N>=1 なのに0件取れた → SITE_LAYOUT_CHANGED
+ *  - ヘッダーが0件で0件取れた        → 正常（空を返す）
+ */
+export function parseFavoritePage(
+  html: string,
+  origin: string,
+): ParsedFavoritePage {
+  const $ = cheerio.load(html);
+
+  if (isLoginPage(html)) {
+    throw new ParseError(
+      "SESSION_EXPIRED: お気に入りページでログイン画面が返りました",
+    );
+  }
+
+  const role = $("div.ec-favoriteRole").first();
+  if (role.length === 0) {
+    throw new ParseError(
+      "SITE_LAYOUT_CHANGED: お気に入りページに ec-favoriteRole がありません",
+    );
+  }
+
+  const headerText = role.find("div.ec-favoriteRole__header").first().text();
+  const totalCount = /お気に入り/.test(headerText)
+    ? parseYen(headerText.match(/(\d+)\s*件/)?.[1])
+    : null;
+
+  // 現状5件でページャは出ないが、増えたときに黙って1ページ目だけ
+  // 取り込むのを防ぐため必ず読む（注文履歴と同じ ul.ec-pager / pageno）。
+  let lastPage = 1;
+  $("ul.ec-pager a").each((_, el) => {
+    const m = ($(el).attr("href") ?? "").match(/pageno=(\d+)/);
+    if (m) lastPage = Math.max(lastPage, Number.parseInt(m[1], 10));
+  });
+
+  const items: ParsedFavoriteItem[] = [];
+  const seen = new Set<number>();
+
+  role
+    .find("ul.ec-favoriteRole__itemList li.ec-favoriteRole__item")
+    .each((_, el) => {
+      const li = $(el);
+      // 一次情報は商品リンク。無ければ削除リンクの URL から拾う。
+      // ※ 削除リンクは絶対に叩かない — ショップには書き込まない。
+      const detailHref =
+        li.find('a[href*="/products/detail/"]').first().attr("href") ?? "";
+      const deleteHref = li.find("a.ec-closeBtn--circle").first().attr("href") ?? "";
+      const raw =
+        detailHref.match(/detail\/(\d+)/)?.[1] ??
+        deleteHref.match(/favorite\/(\d+)\/delete/)?.[1];
+      if (!raw) return;
+
+      const productId = Number.parseInt(raw, 10);
+      // サムネと題名で同じ商品に2リンクあるため重複を除く
+      if (!Number.isInteger(productId) || seen.has(productId)) return;
+      seen.add(productId);
+
+      const name =
+        li.find("p.ec-favoriteRole__itemTitle").first().text().trim() ||
+        li.find('a[href*="/products/detail/"]').first().text().trim() ||
+        null;
+      const src = li.find("img").first().attr("src");
+
+      items.push({
+        productId,
+        name: name || null,
+        imageUrl: src
+          ? /^https?:\/\//.test(src)
+            ? src
+            : origin.replace(/\/$/, "") + (src.startsWith("/") ? src : "/" + src)
+          : null,
+      });
+    });
+
+  if (items.length === 0 && (totalCount ?? 0) > 0) {
+    throw new ParseError(
+      "SITE_LAYOUT_CHANGED: お気に入りが N 件あるのに1件も取得できません",
+    );
+  }
+
+  return { totalCount, lastPage, items };
+}
