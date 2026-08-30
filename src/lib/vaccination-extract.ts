@@ -47,22 +47,38 @@ const PLACEHOLDERS = new Set([
   "unknown",
 ]);
 
-/** 住所・電話・メールらしき文字列。証明書には写るが DB には入れない */
+/**
+ * 住所・電話・氏名らしき文字列。証明書には写るが DB には入れない。
+ *
+ * 証明書は「病院名」と「院長名・飼い主名」が紙面上で隣接して印刷される。
+ * 悪意がなくても clinic に「さくら動物病院 院長 田中太郎」と入る事故が普通に
+ * 起きるので、敬称や肩書きを含む値はまるごと捨てる。
+ * 一部を削って残すことはしない（削り残しのほうが危ない）。
+ */
 const PII_PATTERNS: readonly RegExp[] = [
   /〒/,
   /\d{3}-\d{4}/,
   /\d{2,4}-\d{2,4}-\d{4}/,
   /\+81/,
   /@/,
+  /院長|副院長|獣医師|担当医|飼い主|所有者/,
+  /[様殿]/,
+  /先生/,
 ];
 
-/** 全角数字と記号を半角へ。手書きOCRは全角を返しがち */
+/**
+ * 全角数字と記号を半角へ。手書きOCRは全角を返しがち。
+ *
+ * ダッシュ類は **数字に挟まれているときだけ** 半角ハイフンにする。
+ * 一律に変換すると U+30FC（長音）まで巻き込み、「ブースター」が
+ * 「ブ-スタ-」になる。ワクチン名はカタカナが主体なので実害が大きい。
+ */
 export function toHalfWidth(input: string): string {
   return input
     .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
     .replace(/[／]/g, "/")
     .replace(/[．]/g, ".")
-    .replace(/[－−ー―‐]/g, "-")
+    .replace(/(\d)[－−ー―‐](?=\d)/g, "$1-")
     .replace(/　/g, " ");
 }
 
@@ -71,6 +87,17 @@ interface Ymd {
   month: number;
   /** 「令和9年5月」のように日が無い証明書があるため null を許す */
   day: number | null;
+}
+
+/** 文字列中に日付らしき並びがいくつあるか。2つ以上なら曖昧とみなす */
+function countDateCandidates(s: string): number {
+  const found = new Set<string>();
+  const wareki = /(?:令和|令|平成|平|[RrHh])\s*(?:元|\d{1,2})\s*(?:年|[./-])\s*\d{1,2}/g;
+  const seireki = /\d{4}\s*(?:年|[./-])\s*\d{1,2}/g;
+  for (const re of [wareki, seireki]) {
+    for (const m of s.matchAll(re)) found.add(m[0].replace(/\s+/g, ""));
+  }
+  return found.size;
 }
 
 function eraBase(marker: string): number | null {
@@ -87,6 +114,11 @@ function eraBase(marker: string): number | null {
 function findYmd(input: string): Ymd | null {
   const s = toHalfWidth(input).trim();
   if (s === "") return null;
+
+  // 「接種日 2025/5/3 次回 2026/5/3」のように候補が2つ以上あるときは、
+  // どちらを指しているか決められないので採らない。黙って先頭を選ぶと
+  // 次回予定日を接種日として保存してしまう。
+  if (countDateCandidates(s) > 1) return null;
 
   // 和暦。元年 = 1年。R8.5.3 / 令和8年5月3日 / 令8/5/3 のいずれも拾う
   const wareki = s.match(
@@ -167,7 +199,10 @@ function cleanText(input: unknown, maxLength: number): string | null {
     .trim();
   if (PLACEHOLDERS.has(text) || PLACEHOLDERS.has(text.toLowerCase())) return null;
   if (PII_PATTERNS.some((re) => re.test(text))) return null;
-  return text.slice(0, maxLength);
+  // 上限を超える値は切り詰めずに捨てる。頭100文字だけの誤った病院名が
+  // 入るより、空欄にして人に打たせるほうが安全。
+  if (text.length > maxLength) return null;
+  return text;
 }
 
 /** モデルが返す、まだ何も信用していない形 */
@@ -228,8 +263,10 @@ export function normalizeExtraction(
   const parsedNext = parseCertificateDate(raw.nextDueDate, { allowMonthOnly: true });
   if (parsedNext !== null) {
     const tooFar = yearOf(parsedNext.date) > yearOf(today) + MAX_FUTURE_YEARS;
-    // saveVaccination は次回予定日 < 接種日 を弾く。ここで先に落としておく
-    const beforeShot = date !== null && parsedNext.date < date;
+    // saveVaccination は次回予定日 < 接種日 を弾く。ここではさらに厳しく、
+    // 同日も落とす（正規化が保存より厳しいぶんには問題ない）
+    // 同日は証明書に存在しない組み合わせ。モデルが同じ行を2度読んだ徴候
+    const beforeShot = date !== null && parsedNext.date <= date;
     if (tooFar || beforeShot) {
       dropped.push("次回予定日");
     } else {

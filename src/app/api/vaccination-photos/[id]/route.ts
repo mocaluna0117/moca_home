@@ -42,8 +42,13 @@ export async function GET(
       headers: {
         "Content-Type":
           photo.contentType ?? result.blob.contentType ?? "image/jpeg",
-        // 認証の内側なので共有キャッシュには載せない
-        "Cache-Control": "private, max-age=3600",
+        // 家族と共有する端末で、ログアウト後に直接URLを開いたときに
+        // ブラウザキャッシュから配信されてしまわないようにする。
+        // 1枚1MB以下・同一オリジンなので、毎回取り直しても実用上困らない。
+        "Cache-Control": "private, no-store, max-age=0, must-revalidate",
+        // 画像として保存したものが別のMIMEとして解釈されないように
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": "inline",
       },
     });
   } catch {

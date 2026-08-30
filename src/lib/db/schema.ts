@@ -13,6 +13,13 @@ import {
  * - status : the raw Japanese label from the site (no premature enum)
  * - PII    : intentionally absent. Order-detail pages expose the account
  *            holder's address/phone; those columns do not exist here by design.
+ *            The same rule holds for vaccination certificates: only the date,
+ *            vaccine name, clinic name and next-due date are stored. Owner
+ *            name, address and phone are visible in the photo but never in a
+ *            column — src/lib/vaccination-extract.ts drops any extracted value
+ *            that looks like one. NOTE: when ANTHROPIC_API_KEY is set, the
+ *            certificate *image* (pixels, including that PII) is sent to the
+ *            Anthropic API to be read. See DEPLOY.md.
  */
 
 export const orders = sqliteTable(

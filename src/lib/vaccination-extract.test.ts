@@ -136,13 +136,13 @@ describe("normalizeExtraction — 全体", () => {
     assert.deepEqual(r.dropped, ["次回予定日"]);
   });
 
-  it("同日の次回予定日は許す（保存時のルールに合わせる）", () => {
+  it("次回予定日が接種日と同日なら捨てる（同じ行を2度読んだ徴候）", () => {
     const r = normalizeExtraction(
       { date: "2026-05-03", nextDueDate: "2026-05-03" },
       TODAY,
     );
-    assert.equal(r.nextDueDate, "2026-05-03");
-    assert.deepEqual(r.dropped, []);
+    assert.equal(r.nextDueDate, null);
+    assert.deepEqual(r.dropped, ["次回予定日"]);
   });
 
   it("住所・電話・メールが混ざった値は捨てる（PIIをDBに入れない）", () => {
@@ -165,13 +165,15 @@ describe("normalizeExtraction — 全体", () => {
     assert.deepEqual(r.dropped, []);
   });
 
-  it("鉤括弧と余分な空白を落とし、長すぎる値は切り詰める", () => {
-    const r = normalizeExtraction(
-      { name: "「6種混合  ワクチン」", clinic: "あ".repeat(150) },
-      TODAY,
-    );
+  it("鉤括弧と余分な空白を落とす", () => {
+    const r = normalizeExtraction({ name: "「6種混合  ワクチン」" }, TODAY);
     assert.equal(r.name, "6種混合 ワクチン");
-    assert.equal(r.clinic?.length, 100);
+  });
+
+  it("上限を超える値は切り詰めずに捨てる（誤った名前が残るより空欄がよい）", () => {
+    const r = normalizeExtraction({ clinic: "あ".repeat(150) }, TODAY);
+    assert.equal(r.clinic, null);
+    assert.deepEqual(r.dropped, ["動物病院"]);
   });
 
   it("何も読み取れなくても壊れない", () => {
@@ -199,5 +201,54 @@ describe("normalizeExtraction — 全体", () => {
       nextDueDateApproximate: false,
       dropped: ["接種日", "次回予定日", "ワクチン名"],
     });
+  });
+});
+
+describe("実際の証明書で起きる読み取り事故", () => {
+  it("長音を含むワクチン名を壊さない（ブースター → ブ-スタ- にしない）", () => {
+    for (const v of [
+      "ブースター接種",
+      "犬ジステンパーウイルス感染症",
+      "パルボウイルス感染症",
+      "レプトスピラ・コアワクチン",
+    ]) {
+      assert.equal(normalizeExtraction({ name: v }, TODAY).name, v, v);
+    }
+  });
+
+  it("数字に挟まれたダッシュだけは半角ハイフンにする", () => {
+    assert.equal(toHalfWidth("2026ー5ー3"), "2026-5-3");
+    assert.equal(toHalfWidth("ロットA－2481"), "ロットA－2481");
+  });
+
+  it("病院名に併記された院長名・敬称ごと捨てる", () => {
+    for (const v of [
+      "さくら動物病院 院長 田中太郎",
+      "さくら動物病院 山田花子様",
+      "さくら動物病院（獣医師 佐藤）",
+      "田中太郎 殿",
+      "さくら動物病院 鈴木先生",
+    ]) {
+      assert.equal(normalizeExtraction({ clinic: v }, TODAY).clinic, null, v);
+    }
+  });
+
+  it("ふつうの病院名は通す", () => {
+    for (const v of [
+      "さくら動物病院",
+      "アニマルクリニック代々木",
+      "みどりペットクリニック",
+    ]) {
+      assert.equal(normalizeExtraction({ clinic: v }, TODAY).clinic, v, v);
+    }
+  });
+
+  it("日付が2つ以上ある文字列は採らない（次回を接種日にしない）", () => {
+    assert.equal(d("接種日 2025/5/3 次回 2026/5/3"), null);
+    assert.equal(d("令和7年5月3日 次回 令和8年5月3日"), null);
+  });
+
+  it("同じ日付が2回書かれているだけなら採る", () => {
+    assert.equal(d("2026/5/3 (2026/5/3)"), "2026-05-03");
   });
 });

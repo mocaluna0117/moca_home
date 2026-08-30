@@ -12,10 +12,13 @@ import type { DateStr } from "@/lib/calendar";
 export function VaccinationSection({
   records,
   blobEnabled,
+  aiEnabled,
   today,
 }: {
   records: VaccinationRow[];
   blobEnabled: boolean;
+  /** ANTHROPIC_API_KEY があるか。無ければ証明書の自動読み取りを出さない */
+  aiEnabled: boolean;
   today: DateStr;
 }) {
   return (
@@ -34,6 +37,7 @@ export function VaccinationSection({
           <VaccinationDialog
             today={today}
             blobEnabled={blobEnabled}
+            aiEnabled={aiEnabled}
             trigger="接種を記録"
           />
         </div>
@@ -71,6 +75,7 @@ export function VaccinationSection({
                   <VaccinationDialog
                     today={today}
                     blobEnabled={blobEnabled}
+                    aiEnabled={aiEnabled}
                     record={{
                       id: r.id,
                       date: r.date,
