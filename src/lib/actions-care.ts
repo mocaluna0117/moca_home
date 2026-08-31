@@ -3,6 +3,7 @@
 import { eq, gte, inArray, isNull, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
+import { actionError } from "@/lib/action-error";
 import { db } from "@/lib/db";
 import { careVisitItems, careVisits, heartwormDoses, medicines } from "@/lib/db/schema";
 import {
@@ -97,7 +98,7 @@ export async function saveCareVisit(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "保存に失敗しました",
+      error: actionError(err, "保存に失敗しました"),
     };
   }
 }
@@ -111,7 +112,7 @@ export async function deleteCareVisit(id: number): Promise<ActionResult> {
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "削除に失敗しました",
+      error: actionError(err, "削除に失敗しました"),
     };
   }
 }
@@ -184,7 +185,7 @@ export async function saveMedicine(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "保存に失敗しました",
+      error: actionError(err, "保存に失敗しました"),
     };
   }
 }
@@ -210,7 +211,7 @@ export async function deleteMedicine(id: number): Promise<ActionResult> {
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "削除に失敗しました",
+      error: actionError(err, "削除に失敗しました"),
     };
   }
 }
@@ -292,7 +293,7 @@ export async function generateHeartwormSchedule(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "予定の作成に失敗しました",
+      error: actionError(err, "予定の作成に失敗しました"),
     };
   }
 }
@@ -350,7 +351,7 @@ export async function recordHeartwormDose(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "保存に失敗しました",
+      error: actionError(err, "保存に失敗しました"),
     };
   }
 }
@@ -363,7 +364,7 @@ export async function deleteHeartwormDose(id: number): Promise<ActionResult> {
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "削除に失敗しました",
+      error: actionError(err, "削除に失敗しました"),
     };
   }
 }
@@ -392,7 +393,7 @@ export async function clearUpcomingHeartwormDoses(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "削除に失敗しました",
+      error: actionError(err, "削除に失敗しました"),
     };
   }
 }

@@ -9,7 +9,7 @@
     "lint": "eslint",
     "sync": "tsx --conditions=react-server --env-file=.env.local scripts/sync.ts",
     "db:push": "tsx --env-file=.env.local node_modules/drizzle-kit/bin.cjs push",
-    "test": "tsx --test src/lib/bonus.test.ts src/lib/core-name.test.ts src/lib/calendar.test.ts src/lib/favorites.test.ts src/lib/vaccination-extract.test.ts src/lib/route-params.test.ts src/lib/heartworm.test.ts src/lib/cron-auth.test.ts src/lib/care.test.ts src/lib/mail-config.test.ts src/lib/profile.test.ts src/lib/home.test.ts",
+    "test": "tsx --test src/lib/action-error.test.ts src/lib/bonus.test.ts src/lib/core-name.test.ts src/lib/calendar.test.ts src/lib/favorites.test.ts src/lib/vaccination-extract.test.ts src/lib/route-params.test.ts src/lib/heartworm.test.ts src/lib/cron-auth.test.ts src/lib/care.test.ts src/lib/mail-config.test.ts src/lib/profile.test.ts src/lib/home.test.ts",
     "db:migrate": "tsx --env-file-if-exists=.env.turso scripts/migrate-to-turso.ts",
     "sync:prod": "tsx --conditions=react-server --env-file=.env.local --env-file=.env.turso scripts/sync.ts",
     "db:push:log": "tsx --env-file-if-exists=.env.turso scripts/push-log-tables.ts"

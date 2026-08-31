@@ -3,6 +3,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
+import { actionError } from "@/lib/action-error";
 import { isDateOnly, isMealSlot, type DateStr, type MealSlot } from "@/lib/calendar";
 import {
   deleteBlobs,
@@ -177,7 +178,7 @@ export async function saveMealSlot(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "保存に失敗しました",
+      error: actionError(err, "保存に失敗しました"),
     };
   }
 }
@@ -230,7 +231,7 @@ export async function copyMealDay(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "コピーに失敗しました",
+      error: actionError(err, "コピーに失敗しました"),
     };
   }
 }
@@ -245,7 +246,7 @@ export async function clearMealDay(date: DateStr): Promise<ActionResult> {
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "削除に失敗しました",
+      error: actionError(err, "削除に失敗しました"),
     };
   }
 }
@@ -320,7 +321,7 @@ export async function saveVaccination(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "保存に失敗しました",
+      error: actionError(err, "保存に失敗しました"),
     };
   }
 }
@@ -347,7 +348,7 @@ export async function deleteVaccination(id: number): Promise<ActionResult> {
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "削除に失敗しました",
+      error: actionError(err, "削除に失敗しました"),
     };
   }
 }
@@ -421,7 +422,7 @@ export async function attachVaccinationPhoto(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "写真の登録に失敗しました",
+      error: actionError(err, "写真の登録に失敗しました"),
     };
   }
 }
@@ -461,7 +462,7 @@ export async function discardUnattachedPhoto(pathname: string): Promise<ActionRe
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "写真の削除に失敗しました",
+      error: actionError(err, "写真の削除に失敗しました"),
     };
   }
 }
@@ -480,7 +481,7 @@ export async function detachVaccinationPhoto(photoId: number): Promise<ActionRes
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "写真の削除に失敗しました",
+      error: actionError(err, "写真の削除に失敗しました"),
     };
   }
 }

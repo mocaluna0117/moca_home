@@ -3,6 +3,7 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
+import { actionError } from "@/lib/action-error";
 import { PHOTO_RULES, deleteBlobs, isBlobUrl, parseBlobPath } from "@/lib/blob";
 import { isDateOnly, todayJst } from "@/lib/calendar";
 import { db } from "@/lib/db";
@@ -170,7 +171,7 @@ export async function saveDogProfile(input: DogProfileInput): Promise<ActionResu
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "保存に失敗しました",
+      error: actionError(err, "保存に失敗しました"),
     };
   }
 }
@@ -249,7 +250,7 @@ export async function setDogPhoto(meta: DogPhotoInput): Promise<ActionResult> {
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "写真の差し替えに失敗しました",
+      error: actionError(err, "写真の差し替えに失敗しました"),
     };
   }
 }
@@ -285,7 +286,7 @@ export async function removeDogPhoto(): Promise<ActionResult> {
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "写真の削除に失敗しました",
+      error: actionError(err, "写真の削除に失敗しました"),
     };
   }
 }
@@ -323,7 +324,7 @@ export async function discardUnattachedDogPhoto(pathname: string): Promise<Actio
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "写真の削除に失敗しました",
+      error: actionError(err, "写真の削除に失敗しました"),
     };
   }
 }

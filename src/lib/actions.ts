@@ -3,6 +3,7 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
+import { actionError } from "@/lib/action-error";
 import { db } from "@/lib/db";
 import { nowJstIso } from "@/lib/format";
 import {
@@ -155,7 +156,7 @@ export async function saveReceivedBonuses(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "保存に失敗しました",
+      error: actionError(err, "保存に失敗しました"),
     };
   }
 }
@@ -179,7 +180,7 @@ export async function deleteReceivedBonus(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "削除に失敗しました",
+      error: actionError(err, "削除に失敗しました"),
     };
   }
 }
@@ -241,7 +242,7 @@ export async function toggleFavorite(
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "保存に失敗しました",
+      error: actionError(err, "保存に失敗しました"),
     };
   }
 }
