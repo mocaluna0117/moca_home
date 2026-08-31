@@ -23,6 +23,9 @@ const MAX_NOTE = 500;
 function revalidateCare(): void {
   revalidatePath("/care");
   revalidatePath("/calendar");
+  // ホームの緊急バンドと「次の予定」がフィラリアとトリミングを読むようになった。
+  // ここを足さないと「飲ませた」を記録した直後のホームだけ古い予定を出し続ける。
+  revalidatePath("/");
 }
 
 export interface CareVisitInput {

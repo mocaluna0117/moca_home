@@ -16,7 +16,7 @@ export default async function FavoritesPage() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-2">
-        <h1 className="font-heading inline-flex items-center gap-1.5 text-lg font-semibold">
+        <h1 className="font-heading inline-flex items-center gap-1.5 text-lg">
           <Star className="size-4 fill-foreground" aria-hidden="true" />
           お気に入り
         </h1>
@@ -95,7 +95,7 @@ export default async function FavoritesPage() {
       )}
 
       <Link
-        href="/?view=products"
+        href="/orders?view=products"
         className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
       >
         <Package className="size-3" aria-hidden="true" />

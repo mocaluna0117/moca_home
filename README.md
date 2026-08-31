@@ -2,6 +2,8 @@
 
 [20and20.pet/store](https://20and20.pet/store/) (EC-CUBE) の**自分の購入履歴**を取得し、
 一覧・検索・詳細で閲覧するローカル専用アプリ。
+もかの毎日(ごはん・ワクチン・フィラリア・トリミング)の記録も同じアプリに入っており、
+トップページ `/` はその日のもかを見せる**ホーム**、購入履歴は `/orders` にある。
 
 ## セットアップ
 
@@ -35,8 +37,21 @@ npm run dev                  # http://localhost:3000
 src/lib/scraper/  client(Cookie/待機/再試行) login orders products parse sync
 src/lib/db/       schema index
 src/lib/          queries(読み取り) format
-src/app/          page(一覧) orders/[id] products/[id] api/sync
+src/app/          page(ホーム) orders products/[id] calendar care favorites api/sync
 ```
+
+### ルート
+
+| ルート | 内容 |
+|---|---|
+| `/` | **ホーム** — 今日のもか(写真・年齢・体重)、次の予定、最近のごはん、買ったもの集計 |
+| `/orders` | 購入履歴一覧 — 注文ごと/商品ごとの切り替え、検索、お気に入り絞り込み |
+| `/orders/[id]` | 注文詳細(明細・おまけの記録) |
+| `/products/[id]` | 商品詳細(購入履歴・おまけ予測) |
+| `/calendar` | ごはんとワクチンのカレンダー |
+| `/care` | フィラリアの予定と実績、トリミング・通院の記録 |
+| `/favorites` | お気に入り |
+| `/login` | `APP_PASSWORD` を設定したときだけ通る認証画面 |
 
 ## 設計上の要点
 

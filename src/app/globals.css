@@ -60,7 +60,13 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
+  /*
+   * 地の色。純白ではなくわずかに温かいクリームにする（h=83 は黄み）。
+   * --card は oklch(1 0 0) の純白のまま残すので、カードが地から浮く。
+   * --muted-foreground の明度は動かしていないのでコントラスト比は不変。
+   * .dark は触らない — ThemeProvider が未設置で到達しないため。
+   */
+  --background: oklch(0.994 0.004 83);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -70,9 +76,9 @@
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
+  --muted: oklch(0.968 0.006 83);
   --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
+  --accent: oklch(0.968 0.006 83);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);

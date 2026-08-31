@@ -1,12 +1,7 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextResponse } from "next/server";
 
-import {
-  ALLOWED_PHOTO_TYPES,
-  BLOB_PREFIX,
-  MAX_PHOTO_BYTES,
-  isBlobConfigured,
-} from "@/lib/blob";
+import { PHOTO_RULES, isBlobConfigured, parseBlobPath } from "@/lib/blob";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,13 +34,19 @@ export async function POST(request: Request) {
       body,
       request,
       onBeforeGenerateToken: async (pathname) => {
-        // トークンは vaccinations/ 配下にしか書けない
-        if (!pathname.startsWith(BLOB_PREFIX)) {
-          throw new Error("保存先が不正です");
-        }
+        // 用途は接頭辞の**許可リスト**で決める（vaccinations/ か profile/）。
+        // 「どちらでもよい」と条件を緩める書き方にはしない — ここは
+        // トークン発行の唯一の関門で、緩める側の変更は必ず穴になる。
+        // 判定できない pathname はトークンを出さずに落とす（従来どおり）。
+        const parsed = parseBlobPath(pathname);
+        if (!parsed) throw new Error("保存先が不正です");
+        // 受け入れる形式と上限は用途ごとに違う（profile は HEIC を受けず 8MB）。
+        // ここで縛るので、Server Action 側は client 由来のメタデータを
+        // 二重に確かめるだけでよくなる。
+        const rules = PHOTO_RULES[parsed.kind];
         return {
-          allowedContentTypes: [...ALLOWED_PHOTO_TYPES],
-          maximumSizeInBytes: MAX_PHOTO_BYTES,
+          allowedContentTypes: [...rules.types],
+          maximumSizeInBytes: rules.maxBytes,
           addRandomSuffix: true,
         };
       },

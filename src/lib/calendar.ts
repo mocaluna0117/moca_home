@@ -115,6 +115,24 @@ export function addDays(date: DateStr, n: number): DateStr {
   return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
 }
 
+/**
+ * from から to までの日数（to - from）。to が過去なら負。
+ *
+ * addDays / weekdayOf と同じく UTC の暦日として引き算するので、実行環境の
+ * タイムゾーンにも DST にも影響されない（暦日は「瞬間」ではないため、
+ * ローカル時刻の Date を跨がせるとここで1日ずれる）。
+ */
+export function diffDays(from: DateStr, to: DateStr): number {
+  const utc = (date: DateStr) =>
+    Date.UTC(
+      Number(date.slice(0, 4)),
+      Number(date.slice(5, 7)) - 1,
+      Number(date.slice(8, 10)),
+    );
+  // どちらも UTC 0時なので割り切れる。丸めは浮動小数の保険
+  return Math.round((utc(to) - utc(from)) / 86_400_000);
+}
+
 /** 0=日 … 6=土。暦日→曜日は TZ 非依存なので UTC で計算してよい。 */
 export function weekdayOf(date: DateStr): number {
   const y = Number(date.slice(0, 4));

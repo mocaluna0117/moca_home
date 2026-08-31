@@ -21,6 +21,10 @@ const PUSH_TABLES = [
   "care_visit_items",
   "heartworm_doses",
   "medicines",
+  // これを忘れると本番だけ実行時に no such table: dog_profile になる。
+  // / がサイトの入口なので、1テーブルの取りこぼしで全ページに到達できなくなる
+  // （最後の受け皿は getDogProfile() の try/catch → null）。
+  "dog_profile",
 ] as const;
 
 function requireEnv(name: string): string {

@@ -150,7 +150,7 @@ export async function saveReceivedBonuses(
     });
 
     revalidatePath(`/orders/${orderId}`);
-    revalidatePath("/");
+    revalidatePath("/orders");
     return { ok: true };
   } catch (err) {
     return {
@@ -174,7 +174,7 @@ export async function deleteReceivedBonus(
     if (!row) return { ok: false, error: "記録が見つかりません" };
     await db.delete(receivedBonuses).where(eq(receivedBonuses.id, id)).run();
     revalidatePath(`/orders/${orderId}`);
-    revalidatePath("/");
+    revalidatePath("/orders");
     return { ok: true };
   } catch (err) {
     return {
@@ -232,7 +232,9 @@ export async function toggleFavorite(
       })
       .run();
 
-    revalidatePath("/");
+    // 星で見た目が変わるのは商品一覧・商品詳細・お気に入りの3つ。"/"（ホーム）は
+    // 入れない — ホームが出すのは注文の集計とケアの予定だけで、星では1つも動かない。
+    revalidatePath("/orders");
     revalidatePath(`/products/${productId}`);
     revalidatePath("/favorites");
     return { ok: true, starred: next };

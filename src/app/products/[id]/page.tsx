@@ -61,7 +61,7 @@ export default async function ProductPage({
   return (
     <div className="flex flex-col gap-6">
       <Link
-        href="/?view=products"
+        href="/orders?view=products"
         className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />

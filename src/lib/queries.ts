@@ -516,30 +516,34 @@ export async function getCatalogProduct(
   };
 }
 
+/**
+ * 3タイル（注文数 / 購入品目 / 合計金額）の数字。**1文で引く。**
+ *
+ * 呼び出し元が3箇所に増えた（layout.tsx のヘッダー・ホーム・/orders）。
+ * Turso は1文ごとに往復が乗るので、着地1回の文の数がそのまま体感になる
+ * — 3つのスカラを3往復で取るのをやめ、相関のない副問い合わせを1行に
+ * まとめる。値は書き直し前と同一（ローカル実測 69 / 129 / 1,010,420。
+ * orders.id は PK なので count(distinct id) = count(*)）。
+ *
+ * **既存の過少申告もそのまま引き継ぐ**: 詳細が未取得の注文
+ * （orders.total_yen が null）は 0 円として合計に入る。ホームでも出続ける
+ * 数字だが、直すのは購入履歴側の別の決定なので今回は触らない。
+ */
 export async function getStats() {
-  const row = await db
-    .select({
-      orderCount: sql<number>`count(distinct ${orders.id})`,
-      itemCount: sql<number>`count(${orderItems.id})`,
-      totalSpentYen: sql<number>`coalesce(sum(${orders.totalYen}), 0)`,
-    })
-    .from(orders)
-    .get();
-
-  const spent = await db
-    .select({ total: sql<number>`coalesce(sum(${orders.totalYen}), 0)` })
-    .from(orders)
-    .get();
-
-  const items = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(orderItems)
-    .get();
-
+  const row = await db.get<{
+    orderCount: number;
+    itemCount: number;
+    totalSpentYen: number;
+  }>(sql`
+    select
+      (select count(*) from ${orders})                            as orderCount,
+      (select count(*) from ${orderItems})                        as itemCount,
+      (select coalesce(sum(${orders.totalYen}), 0) from ${orders}) as totalSpentYen
+  `);
   return {
     orderCount: row?.orderCount ?? 0,
-    itemCount: items?.count ?? 0,
-    totalSpentYen: spent?.total ?? 0,
+    itemCount: row?.itemCount ?? 0,
+    totalSpentYen: row?.totalSpentYen ?? 0,
   };
 }
 

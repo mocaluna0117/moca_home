@@ -121,6 +121,47 @@ export async function getPreviousSlot(
   };
 }
 
+/**
+ * 直近で記録のある日を新しい順に limit 日ぶん。
+ *
+ * getMealMonth では答えられない（月初に開くと1〜2件しか出ない）。
+ * ホームはこの1本で「今日のごはん」「最近のごはん3日」「前回をコピーの
+ * 供給元」の3つを賄う — 同じ「前回」の真実を2箇所から引かない。
+ *
+ * getPreviousSlot は**使わない**: あれはスロット単位のクエリで、
+ * copyMealDay（actions-log.ts）は日単位に丸ごと入れ替える操作なので、
+ * 夜だけ記録した日が「前回」から漏れる。
+ *
+ * limit の既定が 4 なのは、今日に記録があると [今日, -1, -2, -3] で
+ * 「今日 + 前3日」がちょうど揃い、今日に記録が無ければ前4日から
+ * 先頭3日を使えるため。
+ */
+export async function getRecentMealDays(limit = 4): Promise<DayMeals[]> {
+  const days = await db
+    .selectDistinct({ date: mealEntries.date })
+    .from(mealEntries)
+    .orderBy(desc(mealEntries.date))
+    .limit(limit)
+    .all();
+  if (days.length === 0) return [];
+
+  const rows = await db
+    .select({ row: mealEntries, productImages: products.imageUrls })
+    .from(mealEntries)
+    .leftJoin(products, eq(products.id, mealEntries.productId))
+    .where(
+      inArray(
+        mealEntries.date,
+        days.map((d) => d.date),
+      ),
+    )
+    .orderBy(desc(mealEntries.date), asc(mealEntries.seq), asc(mealEntries.id))
+    .all();
+
+  // 新しい順。日ごとの組み立ては既存の groupByDate をそのまま再利用する
+  return [...groupByDate(rows).values()].sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
 // ------------------------------------------------------------------ 食歴
 
 export interface FoodHistory {
@@ -284,6 +325,36 @@ export async function getVaccinations(): Promise<VaccinationRow[]> {
   }
 
   return rows.map((r) => ({ ...r, photos: byRecord.get(r.id) ?? [] }));
+}
+
+export interface VaccinationScheduleRow {
+  id: number;
+  date: DateStr;
+  name: string;
+  nextDueDate: DateStr | null;
+}
+
+/**
+ * 次回予定日の判定に必要な3列だけ（+ id）。
+ *
+ * ホームで getVaccinations() を呼ばないのは、あれが vaccination_photos まで
+ * join する2文で、ヒーローの下の1行に写真は要らないため。
+ * どれが「生きている予定」かの判定はここではなく純関数側
+ * （src/lib/home.ts の liveVaccinationDues）— 判定を2箇所に置かない。
+ *
+ * 全件引くが高々数十行（現状0行）。接種記録は年に数回しか増えない。
+ */
+export async function getVaccinationSchedule(): Promise<VaccinationScheduleRow[]> {
+  return db
+    .select({
+      id: vaccinations.id,
+      date: vaccinations.date,
+      name: vaccinations.name,
+      nextDueDate: vaccinations.nextDueDate,
+    })
+    .from(vaccinations)
+    .orderBy(desc(vaccinations.date), desc(vaccinations.id))
+    .all();
 }
 
 /** カレンダーのマスに注射アイコンを出すため、その月の接種日だけ。 */

@@ -4,7 +4,13 @@ import { and, asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { isDateOnly, isMealSlot, type DateStr, type MealSlot } from "@/lib/calendar";
-import { deleteBlobs, isBlobUrl, ALLOWED_PHOTO_TYPES, BLOB_PREFIX, MAX_PHOTO_BYTES } from "@/lib/blob";
+import {
+  deleteBlobs,
+  isBlobUrl,
+  parseBlobPath,
+  ALLOWED_PHOTO_TYPES,
+  MAX_PHOTO_BYTES,
+} from "@/lib/blob";
 import { db } from "@/lib/db";
 import {
   mealEntries,
@@ -381,7 +387,9 @@ export async function attachVaccinationPhoto(
     }
 
     if (!isBlobUrl(meta.url)) return { ok: false, error: "写真のURLが不正です" };
-    if (!meta.pathname.startsWith(BLOB_PREFIX)) {
+    // 接頭辞の許可リストで用途まで見る。startsWith より狭く、
+    // vaccinations/a/../b も profile/ のパスもここには入って来られない
+    if (parseBlobPath(meta.pathname)?.kind !== "vaccination") {
       return { ok: false, error: "写真の保存先が不正です" };
     }
     if (
@@ -428,10 +436,17 @@ export async function attachVaccinationPhoto(
  *
  * **DB が参照している pathname は絶対に消さない。** クライアント由来の値を
  * 受け取るので、この一行が他の記録の証明書を巻き添えにしない保証になる。
+ *
+ * **kind ごとに Action を足す。共有 Action を広げない。** これは
+ * vaccinations/ 専用で、参照を確かめるのも vaccination_photos だけ。
+ * profile/ も受けられるように条件を緩めると、参照チェックが「写真を指しうる
+ * 全テーブルの列挙」になり、1つ書き忘れた瞬間に生きた写真が消える。
+ * プロフィールには専用の discardUnattachedDogPhoto がある
+ * （src/lib/actions-profile.ts）。3つ目の用途も同じ形で足すこと。
  */
 export async function discardUnattachedPhoto(pathname: string): Promise<ActionResult> {
   try {
-    if (typeof pathname !== "string" || !pathname.startsWith(BLOB_PREFIX)) {
+    if (typeof pathname !== "string" || parseBlobPath(pathname)?.kind !== "vaccination") {
       return { ok: false, error: "写真の保存先が不正です" };
     }
     const linked = await db

@@ -117,6 +117,29 @@ export async function getCareDates(
   return map;
 }
 
+/**
+ * 種類ごとの直近の来店日だけ。**明細を join しない。**
+ *
+ * ホームで getCareVisits を丸ごと引かないための細いクエリ
+ * （あれは明細の2文目が付き、金額もホームには出さない）。
+ * limit の既定が 4 なのは、トリミングの周期を中央値で言うのに
+ * 間隔3本 = 日付4件が要るため（src/lib/home.ts の
+ * TRIM_REQUIRED_INTERVALS がその 3 を持つ）。
+ */
+export async function getRecentCareDates(
+  kind: CareKind,
+  limit = 4,
+): Promise<DateStr[]> {
+  const rows = await db
+    .select({ date: careVisits.date })
+    .from(careVisits)
+    .where(eq(careVisits.kind, kind))
+    .orderBy(desc(careVisits.date), desc(careVisits.id))
+    .limit(limit)
+    .all();
+  return rows.map((r) => r.date);
+}
+
 export interface MedicineRow {
   id: number;
   name: string;

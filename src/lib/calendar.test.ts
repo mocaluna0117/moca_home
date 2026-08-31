@@ -5,6 +5,7 @@ import {
   addDays,
   buildMonthGrid,
   daysInMonth,
+  diffDays,
   foodKey,
   formatDayLabel,
   formatMonthLabel,
@@ -107,6 +108,35 @@ describe("addDays — 月跨ぎ・年跨ぎ・閏日", () => {
     assert.equal(addDays("2025-02-28", 1), "2025-03-01");
   });
   it("0日は変化しない", () => assert.equal(addDays("2026-08-30", 0), "2026-08-30"));
+});
+
+describe("diffDays — UTC 計算なので TZ に依存しない", () => {
+  it("同じ日は0", () => {
+    assert.equal(diffDays("2026-08-30", "2026-08-30"), 0);
+  });
+  it("月を跨ぐ", () => {
+    assert.equal(diffDays("2026-08-31", "2026-09-01"), 1);
+    assert.equal(diffDays("2026-07-28", "2026-08-31"), 34);
+  });
+  it("年を跨ぐ", () => {
+    assert.equal(diffDays("2026-12-31", "2027-01-01"), 1);
+    assert.equal(diffDays("2026-01-01", "2027-01-01"), 365);
+  });
+  it("閏年は366日、平年は365日", () => {
+    assert.equal(diffDays("2024-01-01", "2025-01-01"), 366);
+    assert.equal(diffDays("2024-02-28", "2024-03-01"), 2);
+    assert.equal(diffDays("2025-02-28", "2025-03-01"), 1);
+  });
+  it("過去向きは負の値", () => {
+    assert.equal(diffDays("2026-09-01", "2026-08-31"), -1);
+    assert.equal(diffDays("2027-01-01", "2026-12-31"), -1);
+    assert.equal(diffDays("2026-08-31", "2026-07-28"), -34);
+  });
+  it("addDays と往復する", () => {
+    for (const n of [-400, -31, -1, 0, 1, 45, 365]) {
+      assert.equal(diffDays("2026-08-31", addDays("2026-08-31", n)), n, String(n));
+    }
+  });
 });
 
 describe("weekdayOf", () => {

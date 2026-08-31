@@ -60,7 +60,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 もかのほーむ
               </Link>
               <TopNav />
-              <span className="text-xs text-muted-foreground tabular-nums">
+              {/*
+                タブが5本になり、電話ではヘッダーが2行に折り返す。同期の時刻は
+                同期ボタンを押す直前に見るものではないので、狭い画面では隠して
+                タブに幅を譲る（sm 以上では今までどおり出る）。
+              */}
+              <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">
                 最終同期: {formatSyncedAt(lastSync?.finishedAt)}
               </span>
               <div className="ml-auto flex items-center gap-1.5">

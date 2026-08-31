@@ -1,189 +1,57 @@
-import Link from "next/link";
-import { PackageOpen, SearchX, Star } from "lucide-react";
-
-import { OrderCard } from "@/components/order-card";
-import { ProductCard } from "@/components/product-card";
-import { SearchLauncher } from "@/components/search-launcher";
-import {
-  getCatalogState,
-  getFavoriteProductIds,
-  getOrders,
-  getProductSummaries,
-  getStats,
-} from "@/lib/queries";
-import { formatYen } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { GettingStarted } from "@/components/home/getting-started";
+import { MocaHero } from "@/components/home/moca-hero";
+import { NextUpSection } from "@/components/home/next-up-section";
+import { PurchaseSummary } from "@/components/home/purchase-summary";
+import { RecentMealsSection } from "@/components/home/recent-meals-section";
+import { SectionCards } from "@/components/home/section-cards";
+import { UrgentBand } from "@/components/home/urgent-band";
+import { getHomeSnapshot } from "@/lib/queries-home";
 
 export const dynamic = "force-dynamic";
 
-type View = "orders" | "products";
-
-export default async function HomePage({
-  searchParams,
-}: PageProps<"/">) {
-  const params = await searchParams;
-  const rawView = Array.isArray(params.view) ? params.view[0] : params.view;
-  const view: View = rawView === "products" ? "products" : "orders";
-  const rawQ = Array.isArray(params.q) ? params.q[0] : params.q;
-  const q = rawQ?.trim() || undefined;
-  const rawFav = Array.isArray(params.fav) ? params.fav[0] : params.fav;
-  const favoritesOnly = rawFav === "1";
-
-  const stats = await getStats();
-
-  if (stats.orderCount === 0) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-24 text-center">
-        <PackageOpen className="size-10 text-muted-foreground" />
-        <h1 className="font-heading text-lg font-semibold">まだ購入履歴がありません</h1>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          右上の「同期」を押すとストアから購入履歴を取得します。
-          初回同期は全件取得のため 2〜3 分かかります。
-        </p>
-      </div>
-    );
-  }
-
-  const [orders, catalogState, productSummaries, favoriteIds] = await Promise.all([
-    view === "orders" ? getOrders(q) : Promise.resolve([]),
-    getCatalogState(),
-    view === "products"
-      ? getProductSummaries(q, { favoritesOnly })
-      : Promise.resolve([]),
-    getFavoriteProductIds(),
-  ]);
-  const catalogSynced = catalogState.count > 100;
-  const isEmptyResult =
-    view === "orders" ? orders.length === 0 : productSummaries.length === 0;
-
-  const tabs: Array<{ value: View; label: string }> = [
-    { value: "orders", label: "注文ごと" },
-    { value: "products", label: "商品ごと" },
-  ];
-
-  const hrefFor = (value: View) => {
-    const search = new URLSearchParams();
-    if (value === "products") search.set("view", "products");
-    if (q) search.set("q", q);
-    if (favoritesOnly && value === "products") search.set("fav", "1");
-    const s = search.toString();
-    return s ? `/?${s}` : "/";
-  };
-
-  // 「お気に入りだけ」トグル（?q= と併用できる）
-  const favHref = (() => {
-    const search = new URLSearchParams();
-    search.set("view", "products");
-    if (q) search.set("q", q);
-    if (!favoritesOnly) search.set("fav", "1");
-    return `/?${search.toString()}`;
-  })();
+/**
+ * ホーム。主題は「買い物」ではなく「もか」。
+ *
+ * 導出はすべて getHomeSnapshot の中で終わっている（この関数に判定を1つも
+ * 置かないのが要点 — ブロックが5つあるので、ここで少しでも計算を始めると
+ * 「今日」や「前回」の定義がページとライブラリの2箇所に散る）。
+ * 購入履歴の一覧・検索・タブは /orders に移したので searchParams は取らない。
+ *
+ * 注文0件での早期 return も置かない。同期前でもヒーロー・はじめかた・
+ * ほかのページは意味を持って描けるし、全画面の空状態は /orders の役目。
+ */
+export default async function HomePage() {
+  const home = await getHomeSnapshot();
 
   return (
-    <div className="flex flex-col gap-5">
-      <section className="grid grid-cols-3 gap-3">
-        <Stat label="注文数" value={`${stats.orderCount}件`} />
-        <Stat label="購入品目" value={`${stats.itemCount}件`} />
-        <Stat label="合計金額" value={formatYen(stats.totalSpentYen)} />
-      </section>
+    // 他ページは gap-5。ホームだけ性格の違うセクションが5つ積むので1段広げる
+    <div className="flex flex-col gap-6">
+      {/* 平常日は DOM に無い。空の警告枠を毎日見せない */}
+      {home.urgent.length > 0 && (
+        <UrgentBand
+          items={home.urgent}
+          today={home.today}
+          medicines={home.medicines}
+        />
+      )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <nav className="inline-flex w-fit rounded-lg bg-muted p-1" aria-label="表示切替">
-          {tabs.map((tab) => (
-            <Link
-              key={tab.value}
-              href={hrefFor(tab.value)}
-              scroll={false}
-              aria-current={view === tab.value ? "page" : undefined}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-sm transition-colors",
-                view === tab.value
-                  ? "bg-background font-medium shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {tab.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="flex items-center gap-2">
-          {view === "products" && (
-            <Link
-              href={favHref}
-              scroll={false}
-              aria-pressed={favoritesOnly}
-              className={cn(
-                "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
-                favoritesOnly
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Star
-                className={cn("size-4", favoritesOnly && "fill-background")}
-                aria-hidden="true"
-              />
-              お気に入り
-            </Link>
-          )}
-          <SearchLauncher />
-        </div>
-      </div>
+      <MocaHero {...home.hero} />
 
-      {isEmptyResult ? (
-        <div className="flex flex-col items-center gap-2 py-20 text-center">
-          <SearchX className="size-8 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            「{q}」に一致する商品はありませんでした。
-          </p>
-        </div>
-      ) : view === "orders" ? (
-        <>
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {orders.length}件の注文
-          </p>
-          <div className="flex flex-col gap-4">
-            {orders.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                catalogSynced={catalogSynced}
-                favoriteIds={favoriteIds}
-              />
-            ))}
-          </div>
-        </>
+      {/*
+        ケアもごはんも記録が0件のときは、同じ寸法の破線ボックスを2つ
+        並べる代わりに【はじめかた】1枚に畳む。
+      */}
+      {home.showGettingStarted ? (
+        <GettingStarted />
       ) : (
         <>
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {productSummaries.length}種類の商品
-          </p>
-          {favoritesOnly && (
-            <p className="text-xs text-muted-foreground">
-              購入・おまけの履歴があるお気に入りだけを表示しています。
-              買ったことのないお気に入りは{" "}
-              <Link href="/favorites" className="underline">
-                お気に入り一覧
-              </Link>{" "}
-              にあります。
-            </p>
-          )}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-            {productSummaries.map((product) => (
-              <ProductCard key={product.key} product={product} />
-            ))}
-          </div>
+          <NextUpSection rows={home.scheduleRows} />
+          <RecentMealsSection days={home.recentDays} />
         </>
       )}
-    </div>
-  );
-}
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border bg-card px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-0.5 font-semibold tabular-nums">{value}</div>
+      <PurchaseSummary stats={home.stats} lastSyncedAt={home.lastSyncedAt} />
+      <SectionCards />
     </div>
   );
 }

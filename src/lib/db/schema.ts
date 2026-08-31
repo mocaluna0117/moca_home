@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   sqliteTable,
@@ -8,6 +9,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 import type { RemindError } from "@/lib/mail-config";
+import type { DogSex } from "@/lib/profile";
 
 /**
  * Conventions
@@ -444,3 +446,61 @@ export type HeartwormDose = typeof heartwormDoses.$inferSelect;
 export type MealEntry = typeof mealEntries.$inferSelect;
 export type Vaccination = typeof vaccinations.$inferSelect;
 export type VaccinationPhoto = typeof vaccinationPhotos.$inferSelect;
+
+// ------------------------------------------------------------ プロフィール
+
+/**
+ * もかのプロフィール。**常に id = 1 の1行だけ**（PROFILE_ROW_ID）。
+ *
+ * 単一行の保証の本体はアプリ側 — PROFILE_ROW_ID 固定 +
+ * onConflictDoUpdate({ target: dogProfile.id }) の1経路しか書き込みが無い。
+ * CHECK は保険。drizzle-kit push はこのリポジトリで実際にインデックスを
+ * 作り落としたことがあり（heartworm_doses のコメント参照）、CHECK も
+ * 落ちうるので、CHECK に依存した書き方はしない。
+ *
+ * id / name / created_at / updated_at 以外はすべて nullable。
+ * scripts/push-log-tables.ts の syncColumns は既定値の無い NOT NULL 列を
+ * ALTER で足せない（SQLite の制約）ので、将来列が増えても本番に届く形に
+ * しておく。
+ *
+ * PII: intentionally absent — 飼い主の氏名・住所・電話、かかりつけ病院の
+ * 連絡先、マイクロチップ番号、鑑札・登録番号の列は作らない。この DB は
+ * Turso に出る（schema.ts 冒頭の PII 方針をこのテーブルにも適用）。
+ */
+export const dogProfile = sqliteTable(
+  "dog_profile",
+  {
+    /** 常に 1。upsert の衝突先（rowid 別名なので索引不要） */
+    id: integer("id").primaryKey(),
+    /** ヒーローの主役。既定値は置かない */
+    name: text("name").notNull(),
+    /** 犬種。自由入力（マスタを持たない） */
+    breed: text("breed"),
+    /** "female" | "male" | null */
+    sex: text("sex").$type<DogSex>(),
+    /** 誕生日, DATE ONLY 'YYYY-MM-DD' */
+    birthday: text("birthday"),
+    /** おうちに来た日, DATE ONLY */
+    cameHomeOn: text("came_home_on"),
+    /** 整数グラム（5.2kg = 5200） */
+    weightGrams: integer("weight_grams"),
+    /** その体重を測った日, DATE ONLY */
+    weighedOn: text("weighed_on"),
+    /** ひとこと（40文字） */
+    note: text("note"),
+    /** Blob の削除キー＝表示経路の鍵 */
+    photoPathname: text("photo_pathname"),
+    /** /api/dog-photo が返す Content-Type */
+    photoContentType: text("photo_content_type"),
+    /** 添付時の検証値の控え（診断用） */
+    photoSizeBytes: integer("photo_size_bytes"),
+    /** +09:00 付き ISO。?v= のキャッシュ破り */
+    photoUpdatedAt: text("photo_updated_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  // インデックスなし（単一行・PK 引きのみ）
+  (t) => [check("dog_profile_single_row", sql`${t.id} = 1`)],
+);
+
+export type DogProfile = typeof dogProfile.$inferSelect;

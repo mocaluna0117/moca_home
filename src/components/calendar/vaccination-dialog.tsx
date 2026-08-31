@@ -28,6 +28,8 @@ import {
 import type { AiProvider } from "@/lib/ai";
 import { callAction } from "@/lib/call-action";
 import type { DateStr } from "@/lib/calendar";
+// 引数なしで呼ぶ。既定値が旧 prepare() の定数と1:1 なので挙動は変わらない
+import { preparePhoto } from "@/lib/prepare-photo";
 import type { NormalizedExtraction } from "@/lib/vaccination-extract";
 
 export interface PhotoRef {
@@ -48,13 +50,6 @@ export interface VaccinationRecord {
 
 const MAX_PHOTOS = 8;
 
-const MAX_EDGE = 2000;
-const QUALITY = 0.82;
-/** これより小さい画像は再エンコードしない（世代劣化を避ける） */
-const SKIP_BELOW_BYTES = 1.5 * 1024 * 1024;
-/** そのまま保存してよい形式。HEIC は Chrome / Firefox が <img> で描けない */
-const KEEP_AS_IS = new Set(["image/jpeg", "image/png", "image/webp"]);
-
 /**
  * 保存前の写真。Blob へのアップロードは「保存」を押したあと、記録が
  * DB にできてから行う。こうすると孤児 blob が原理的に生まれない
@@ -73,44 +68,6 @@ interface Suggestion {
   field: "date" | "name" | "clinic" | "nextDue";
   label: string;
   value: string;
-}
-
-/**
- * アップロード前にブラウザで縮小する。スマホ写真は 3〜12MB あり、
- * そのままだと回線と保存容量を無駄に使う。
- * 失敗した場合（HEIC を decode できない・低メモリ端末）は原本をそのまま
- * 送る — 直アップロードなのでサイズ上限に引っかからない。
- */
-async function prepare(file: File): Promise<{
-  body: Blob | File;
-  contentType: string;
-  width: number | null;
-  height: number | null;
-}> {
-  // 小さくても HEIC は通さない。通すと一覧のサムネイルが出ない端末がある
-  if (file.size < SKIP_BELOW_BYTES && KEEP_AS_IS.has(file.type)) {
-    return { body: file, contentType: file.type, width: null, height: null };
-  }
-  try {
-    // imageOrientation を指定しないと iPhone の縦写真が横倒しになる
-    // （canvas は EXIF の回転情報を落とすため）
-    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
-    const w = Math.round(bitmap.width * scale);
-    const h = Math.round(bitmap.height * scale);
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((res) =>
-      canvas.toBlob(res, "image/jpeg", QUALITY),
-    );
-    if (!blob) throw new Error("encode failed");
-    return { body: blob, contentType: "image/jpeg", width: w, height: h };
-  } catch {
-    return { body: file, contentType: file.type || "image/jpeg", width: null, height: null };
-  }
 }
 
 export function VaccinationDialog({
@@ -353,7 +310,7 @@ export function VaccinationDialog({
         setUploading(0);
         let uploaded: { pathname: string } | null = null;
         try {
-          const { body, contentType, width, height } = await prepare(item.file);
+          const { body, contentType, width, height } = await preparePhoto(item.file);
           const blob = await upload(`vaccinations/${crypto.randomUUID()}.jpg`, body, {
             // ストアは private（証明書に氏名・住所が写るため）。閲覧は
             // 同一オリジンの /api/vaccination-photos/[id] 経由で行う。
