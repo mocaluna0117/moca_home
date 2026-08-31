@@ -26,13 +26,16 @@ import { isBlobConfigured } from "@/lib/blob";
 import {
   SLOT_LABEL,
   buildMonthGrid,
+  monthRange,
   parseYearMonth,
   todayJst,
   yearMonthOf,
   type DateStr,
 } from "@/lib/calendar";
+import { buildCalendarMarks } from "@/lib/calendar-marks";
 import { formatDate, nowJstIso } from "@/lib/format";
 import { shortLabel } from "@/lib/short-name";
+import { getCareDates, getHeartwormDoses } from "@/lib/queries-care";
 import {
   getFoodHistory,
   getMealDay,
@@ -40,6 +43,7 @@ import {
   getPreviousSlot,
   getStartedInMonth,
   getVaccinationDates,
+  getVaccinationSchedule,
   getVaccinations,
   type DayMeals,
 } from "@/lib/queries-log";
@@ -121,11 +125,36 @@ async function LogTab({
   grid: NonNullable<ReturnType<typeof buildMonthGrid>>;
   today: DateStr;
 }) {
-  const [month, started, vaccineDates] = await Promise.all([
-    getMealMonth(ym),
-    getStartedInMonth(ym),
-    getVaccinationDates(ym),
-  ]);
+  // ym は parseYearMonth を通っているので monthRange も必ず返る
+  // （上の buildMonthGrid(ym)! と同じ理由）
+  const range = monthRange(ym)!;
+
+  /*
+    印の材料はすべて既存のクエリから引く。**カレンダー専用のクエリは足さない**
+    — 「その日に何があったか」の答えが2箇所に増えると、片方だけ直る日が来る。
+
+    月グリッドを描くのはこのタブだけなので、印のための3本（来店日・フィラリア・
+    ワクチンの予定）も食べたもの／接種記録タブには乗らない。追加の await には
+    せず、既にあった Promise.all に足して1往復のままにする。
+  */
+  const [month, started, vaccinationDates, careDates, doses, vaccinationSchedule] =
+    await Promise.all([
+      getMealMonth(ym),
+      getStartedInMonth(ym),
+      getVaccinationDates(ym),
+      getCareDates(range.start, range.endExclusive),
+      getHeartwormDoses(),
+      getVaccinationSchedule(),
+    ]);
+
+  // どの日に何の印を出すかは buildCalendarMarks が決めきる（表示側は並べるだけ）
+  const marks = buildCalendarMarks({
+    careDates,
+    vaccinationDates,
+    doses,
+    vaccinationSchedule,
+    range,
+  });
 
   const byDate = new Map(month.map((d) => [d.date, d]));
 
@@ -147,7 +176,8 @@ async function LogTab({
       meals,
       draft: toDraft(cell.date, meals),
       previousDate: previousOf(cell.date),
-      vaccines: vaccineDates.get(cell.date) ?? [],
+      // 印が無い日は Map に入っていない
+      marks: marks.get(cell.date) ?? [],
     });
   }
 

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { careVisitItems, careVisits, heartwormDoses, medicines } from "@/lib/db/schema";
@@ -96,7 +96,12 @@ export async function getCareYearTotals(kind: CareKind): Promise<CareYearTotal[]
   return rows.map((r) => ({ year: r.year, visits: r.visits, totalYen: r.total }));
 }
 
-/** カレンダーのマスに印を出すため、その月に来店した日だけ */
+/**
+ * カレンダーのマスに印を出すため、その月に来店した日だけ。
+ *
+ * endExclusive は名前どおり**含まない**（monthRange が返す「翌月初」を
+ * そのまま渡せる）。lte だと翌月1日の記録が今月のマスに漏れる。
+ */
 export async function getCareDates(
   startDate: DateStr,
   endExclusive: DateStr,
@@ -104,7 +109,7 @@ export async function getCareDates(
   const rows = await db
     .select({ date: careVisits.date, kind: careVisits.kind })
     .from(careVisits)
-    .where(and(gte(careVisits.date, startDate), lte(careVisits.date, endExclusive)))
+    .where(and(gte(careVisits.date, startDate), lt(careVisits.date, endExclusive)))
     .all();
   const map = new Map<DateStr, CareKind[]>();
   for (const r of rows) {
