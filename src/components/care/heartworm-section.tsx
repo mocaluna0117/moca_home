@@ -1,5 +1,7 @@
 import { AlertTriangle, Bell, BellOff, Pill } from "lucide-react";
 
+import { HeartwormClearDialog } from "@/components/care/heartworm-clear-dialog";
+import { HeartwormDeleteButton } from "@/components/care/heartworm-delete-button";
 import { HeartwormPlanDialog } from "@/components/care/heartworm-plan-dialog";
 import { HeartwormRecordDialog } from "@/components/care/heartworm-record-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +30,10 @@ export function HeartwormSection({
 }) {
   const withStatus = doses.map((d) => ({ ...d, status: doseStatus(d, today) }));
   const dueNow = withStatus.filter((d) => d.status === "today" || d.status === "overdue");
+  // まとめ削除の対象。今日以降で未実施のものだけ（実績は巻き込まない）
+  const clearable = withStatus
+    .filter((d) => d.givenDate === null && d.scheduledDate >= today)
+    .map((d) => d.scheduledDate);
   const failed = withStatus.filter((d) => d.remindError !== null && d.givenDate === null);
 
   return (
@@ -42,7 +48,8 @@ export function HeartwormSection({
             {doses.length}件
           </span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <HeartwormClearDialog today={today} targets={clearable} />
           <HeartwormPlanDialog today={today} />
         </div>
       </div>
@@ -124,7 +131,7 @@ export function HeartwormSection({
                   実施 {formatDate(d.givenDate)}
                 </span>
               )}
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-1">
                 <HeartwormRecordDialog
                   dose={{
                     id: d.id,
@@ -134,6 +141,11 @@ export function HeartwormSection({
                     note: d.note,
                   }}
                   today={today}
+                />
+                <HeartwormDeleteButton
+                  id={d.id}
+                  scheduledDate={d.scheduledDate}
+                  given={d.givenDate !== null}
                 />
               </div>
               {d.note && (
