@@ -103,6 +103,42 @@ npm run sync:prod -- --catalog     # .env.turso を読んで本番DBに書き込
 `sync_runs` テーブルで実行中ロックを取るため、CLI と Vercel の同時実行はどちらか一方が
 「同期が既に実行中です」で弾かれます。
 
+## テーブルや列を足したとき（スキーマ変更）
+
+**`git push` はコードしか本番に届けません。スキーマは追随しません。** Vercel は
+リポジトリからビルドするだけで、Turso のテーブルには触りません。足したテーブルを
+本番に届けるのは下の手順だけです。
+
+```bash
+# 1. src/lib/db/schema.ts に定義を書く
+# 2. ローカルDBに反映
+npm run db:push
+# 3. scripts/push-log-tables.ts の PUSH_TABLES にテーブル名を追加  ← 忘れやすい
+# 4. 本番DBに反映（.env.turso を読む）
+npm run db:push:log
+```
+
+出力の `作成/確認: table <名前>` と、末尾の「対象DBの状態」の一覧に名前が
+あることを目で確認してください。`CREATE TABLE IF NOT EXISTS` なので何度
+実行しても安全です。
+
+**3 を忘れると、本番だけが実行時に `no such table: …` で落ちます。** ローカルは
+2 で作られているので気づけません。`/`（ホーム）がサイトの入口になったので、
+ホームが読むテーブルを1枚落とすと全ページに到達できなくなります。
+実際に `dog_profile` でこれが起きました（2026-08-31。プロフィールの保存が
+「保存に失敗しました（no such table: dog_profile）」で失敗した）。
+`getDogProfile()` の try/catch はその1枚ぶんの保険で、他のテーブルには
+同じ受け皿がありません。
+
+**なぜ2手に分かれるのか**: `drizzle-kit push`（手順2）は本番に向けません。
+このリポジトリで実際にテーブルだけ作ってインデックスを落とし、次回実行時に
+`no such index` で止まったことがあります。`push-log-tables.ts` は
+ローカルDBの `sqlite_master` にある `CREATE` 文をそのまま再生するので取りこぼしません。
+
+**既存テーブルに列を足すときは、必ず nullable か既定値つきにしてください。**
+SQLite は既定値の無い `NOT NULL` 列を後から `ALTER` で足せないため、
+スクリプトの `syncColumns` は「要手動」と出して飛ばします。
+
 ## 写真の保存先（Vercel Blob）
 
 写真を使うには Blob ストアが必要です（未設定でも文字の記録は全部使えます。
