@@ -63,6 +63,48 @@ export function generateDoseDates(
   return { ok: true, dates };
 }
 
+/**
+ * 日本のフィラリア予防の目安。蚊が出はじめた頃から、いなくなった1か月後まで。
+ * 地域と獣医師の指示で前後するので、あくまで初期値。
+ */
+export const SEASON_START_MONTH = 5;
+export const SEASON_END_MONTH = 11;
+
+/**
+ * 一括生成ダイアログの初期値。
+ *
+ * **今日を見ずに固定で 5月〜11月 を出してはいけない。** 8月に開くと
+ * 5・6・7月というすでに過ぎた日が既定で提案されてしまう。
+ * シーズンの途中なら今月から、シーズンが終わっていれば翌年のシーズンから。
+ */
+export function defaultSchedulePlan(today: DateStr): SchedulePlan {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  const day = Number(today.slice(8, 10));
+
+  let startYear = year;
+  let startMonth: number;
+  if (month < SEASON_START_MONTH) {
+    // シーズン前。今年のシーズン頭から
+    startMonth = SEASON_START_MONTH;
+  } else if (month <= SEASON_END_MONTH) {
+    // シーズン中。今月から（過去の月は出さない）
+    startMonth = month;
+  } else {
+    // シーズン後（12月）。来年のシーズン頭から
+    startYear = year + 1;
+    startMonth = SEASON_START_MONTH;
+  }
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    startMonth: `${startYear}-${pad(startMonth)}`,
+    endMonth: `${startYear}-${pad(SEASON_END_MONTH)}`,
+    // 「今日から毎月この日」がいちばん自然。過ぎた日を作らずに済む
+    dayOfMonth: day,
+  };
+}
+
 export interface DoseRow {
   id: number;
   scheduledDate: DateStr;

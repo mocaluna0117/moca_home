@@ -19,26 +19,28 @@ import { Input } from "@/components/ui/input";
 import { generateHeartwormSchedule } from "@/lib/actions-care";
 import { callAction } from "@/lib/call-action";
 import type { DateStr } from "@/lib/calendar";
-import { generateDoseDates } from "@/lib/heartworm";
+import { defaultSchedulePlan, generateDoseDates } from "@/lib/heartworm";
 import { formatDate } from "@/lib/format";
 
 /** 期間を指定して予定をまとめて作る。すでにある日は飛ばす。 */
 export function HeartwormPlanDialog({ today }: { today: DateStr }) {
-  const thisYear = today.slice(0, 4);
   const [open, setOpen] = useState(false);
-  // 日本のフィラリア予防は5月〜11月ごろが目安。初期値をそこに寄せておく
-  const [startMonth, setStartMonth] = useState(`${thisYear}-05`);
-  const [endMonth, setEndMonth] = useState(`${thisYear}-11`);
-  const [day, setDay] = useState("15");
+  // 既定値は今日を見て決める。固定で5月〜11月にすると、8月に開いたときに
+  // 5・6・7月というすでに過ぎた日が提案されてしまう
+  const initial = defaultSchedulePlan(today);
+  const [startMonth, setStartMonth] = useState(initial.startMonth);
+  const [endMonth, setEndMonth] = useState(initial.endMonth);
+  const [day, setDay] = useState(String(initial.dayOfMonth));
   const [label, setLabel] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (next) {
-      setStartMonth(`${thisYear}-05`);
-      setEndMonth(`${thisYear}-11`);
-      setDay("15");
+      const fresh = defaultSchedulePlan(today);
+      setStartMonth(fresh.startMonth);
+      setEndMonth(fresh.endMonth);
+      setDay(String(fresh.dayOfMonth));
       setLabel("");
     }
   }
@@ -50,6 +52,8 @@ export function HeartwormPlanDialog({ today }: { today: DateStr }) {
     endMonth,
     dayOfMonth: Number(day),
   });
+
+  const past = preview.ok ? preview.dates.filter((d) => d < today).length : 0;
 
   function handleSave() {
     startTransition(async () => {
@@ -147,12 +151,21 @@ export function HeartwormPlanDialog({ today }: { today: DateStr }) {
                   {preview.dates.map((d) => (
                     <li
                       key={d}
-                      className="rounded-md border px-2 py-0.5 text-xs tabular-nums"
+                      className={
+                        d < today
+                          ? "rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground tabular-nums"
+                          : "rounded-md border px-2 py-0.5 text-xs tabular-nums"
+                      }
                     >
                       {formatDate(d)}
                     </li>
                   ))}
                 </ul>
+                {past > 0 && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    うち{past}件はすでに過ぎた日です（点線）。作ると「未投薬」として残ります。
+                  </p>
+                )}
                 <p className="mt-2 text-xs text-muted-foreground">
                   31日を指定した月に31日が無い場合は、その月の末日にします。
                 </p>

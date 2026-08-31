@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  defaultSchedulePlan,
   doseStatus,
   generateDoseDates,
   selectDosesToRemind,
@@ -144,5 +145,57 @@ describe("doseStatus", () => {
     assert.equal(doseStatus({ scheduledDate: TODAY, givenDate: null }, TODAY), "today");
     assert.equal(doseStatus({ scheduledDate: "2026-08-01", givenDate: null }, TODAY), "overdue");
     assert.equal(doseStatus({ scheduledDate: "2026-09-15", givenDate: null }, TODAY), "upcoming");
+  });
+});
+
+describe("defaultSchedulePlan — 過ぎた日を既定で提案しない", () => {
+  it("シーズン前（3月）なら今年の5月から", () => {
+    assert.deepEqual(defaultSchedulePlan("2026-03-10"), {
+      startMonth: "2026-05",
+      endMonth: "2026-11",
+      dayOfMonth: 10,
+    });
+  });
+
+  it("シーズン中（8月）なら今月から。5月に戻らない", () => {
+    assert.deepEqual(defaultSchedulePlan("2026-08-31"), {
+      startMonth: "2026-08",
+      endMonth: "2026-11",
+      dayOfMonth: 31,
+    });
+  });
+
+  it("シーズン頭（5月）なら5月から", () => {
+    assert.deepEqual(defaultSchedulePlan("2026-05-01"), {
+      startMonth: "2026-05",
+      endMonth: "2026-11",
+      dayOfMonth: 1,
+    });
+  });
+
+  it("シーズン最終月（11月）なら11月だけ", () => {
+    assert.deepEqual(defaultSchedulePlan("2026-11-20"), {
+      startMonth: "2026-11",
+      endMonth: "2026-11",
+      dayOfMonth: 20,
+    });
+  });
+
+  it("シーズン後（12月）なら翌年の5月から", () => {
+    assert.deepEqual(defaultSchedulePlan("2026-12-05"), {
+      startMonth: "2027-05",
+      endMonth: "2027-11",
+      dayOfMonth: 5,
+    });
+  });
+
+  it("既定値がそのまま生成に通り、過去の日を含まない", () => {
+    for (const today of ["2026-03-10", "2026-08-31", "2026-11-20", "2026-12-05"]) {
+      const plan = defaultSchedulePlan(today);
+      const r = generateDoseDates(plan);
+      assert.equal(r.ok, true, today);
+      const past = r.ok ? r.dates.filter((d) => d < today) : [];
+      assert.deepEqual(past, [], `${today} の既定値が過去の日を作った: ${past.join(",")}`);
+    }
   });
 });
