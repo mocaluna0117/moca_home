@@ -54,7 +54,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
       </Link>
 
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="text-xl font-semibold tabular-nums">注文 {order.id}</h1>
+        <h1 className="font-heading text-xl font-semibold tabular-nums">注文 {order.id}</h1>
         <StatusBadge status={order.status} />
         <span className="text-sm text-muted-foreground tabular-nums">
           {formatDateTime(order.orderedAt)}

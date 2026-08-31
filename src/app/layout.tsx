@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Hachi_Maru_Pop } from "next/font/google";
 import { cookies } from "next/headers";
 import Link from "next/link";
 
@@ -11,9 +12,26 @@ import { getCatalogState, getLastSync, getStats } from "@/lib/queries";
 import { formatSyncedAt } from "@/lib/format";
 import "./globals.css";
 
+/**
+ * アプリ名と見出しに使う手書き風フォント。
+ *
+ * 日本語は字数が多くファイルが大きいので preload しない（preload するには
+ * subsets の指定が要るが、日本語サブセットは全部入りに近く重い）。
+ * display: "swap" にしてあるので、読み込み前はシステムフォントで出て、
+ * 届いたら差し替わる。文字が消える時間は作らない。
+ */
+const cuteFont = Hachi_Maru_Pop({
+  weight: "400",
+  display: "swap",
+  preload: false,
+  variable: "--font-hachi-maru-pop",
+});
+
 export const metadata: Metadata = {
-  title: "20and20 購入履歴",
-  description: "20and20 ストアの購入履歴を一覧で確認する",
+  title: "もかのほーむ",
+  description: "もかの毎日の記録と、20&20 の購入履歴をまとめて見る",
+  applicationName: "もかのほーむ",
+  appleWebApp: { title: "もかのほーむ" },
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
@@ -33,13 +51,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const catalogSyncAvailable = !process.env.VERCEL;
 
   return (
-    <html lang="ja" className="h-full antialiased">
+    <html lang="ja" className={`${cuteFont.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-background text-foreground">
         {authed && (
           <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur">
             <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-              <Link href="/" className="font-semibold tracking-tight">
-                20and20
+              <Link href="/" className="font-cute text-lg tracking-tight">
+                もかのほーむ
               </Link>
               <TopNav />
               <span className="text-xs text-muted-foreground tabular-nums">

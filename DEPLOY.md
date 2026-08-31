@@ -5,7 +5,7 @@ Vercel はファイルを保存できないため、SQLite の中身を **Turso*
 
 ## 0. 前提
 
-- GitHub リポジトリ: `mocaluna0117/20_and_20_management`(現在 **Public**。気になる場合は Private に変更を推奨)
+- GitHub リポジトリ: `mocaluna0117/moca_home`(現在 **Public**。気になる場合は Private に変更を推奨)
 - ローカルの `data/app.db` に取り込み済みのデータ(注文69件・商品1,480件)
 
 ## 1. Turso のセットアップ（あなたの操作・ブラウザのみ）

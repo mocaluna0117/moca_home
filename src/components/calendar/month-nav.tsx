@@ -27,7 +27,7 @@ export function MonthNav({
       >
         <ChevronLeft />
       </Link>
-      <h1 className="min-w-32 text-center text-lg font-semibold tabular-nums">
+      <h1 className="font-heading min-w-32 text-center text-lg font-semibold tabular-nums">
         {grid.label}
       </h1>
       <Link

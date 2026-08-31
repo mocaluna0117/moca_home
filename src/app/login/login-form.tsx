@@ -23,7 +23,7 @@ export function LoginForm({ from }: { from: string }) {
     >
       <div className="flex items-center gap-2">
         <Lock className="size-4 text-muted-foreground" aria-hidden="true" />
-        <h1 className="font-semibold">20and20 購入履歴</h1>
+        <h1 className="font-cute text-xl">もかのほーむ</h1>
       </div>
       <p className="text-sm text-muted-foreground">
         閲覧するにはパスワードを入力してください。

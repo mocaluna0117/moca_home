@@ -12,7 +12,7 @@ export function MedicineSection({ medicines }: { medicines: MedicineRow[] }) {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="inline-flex items-center gap-1.5 text-sm font-medium">
+        <h2 className="font-heading inline-flex items-center gap-1.5 text-sm font-medium">
           <Pill className="size-4" aria-hidden="true" />
           薬
         </h2>

@@ -119,7 +119,7 @@ export function buildReminderBody(
   }
   lines.push("");
   lines.push("――");
-  lines.push("20&20 管理アプリからの自動送信です。");
+  lines.push("もかのほーむ からの自動送信です。");
   return lines.join("\n");
 }
 

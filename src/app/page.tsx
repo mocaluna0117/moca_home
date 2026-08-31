@@ -35,7 +35,7 @@ export default async function HomePage({
     return (
       <div className="flex flex-col items-center gap-3 py-24 text-center">
         <PackageOpen className="size-10 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">まだ購入履歴がありません</h1>
+        <h1 className="font-heading text-lg font-semibold">まだ購入履歴がありません</h1>
         <p className="max-w-sm text-sm text-muted-foreground">
           右上の「同期」を押すとストアから購入履歴を取得します。
           初回同期は全件取得のため 2〜3 分かかります。

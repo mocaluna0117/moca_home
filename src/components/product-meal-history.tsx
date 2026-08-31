@@ -10,7 +10,7 @@ import type { ProductMealSummary } from "@/lib/queries-log";
 export function ProductMealHistory({ meal }: { meal: ProductMealSummary }) {
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="inline-flex items-center gap-1.5 text-sm font-medium">
+      <h2 className="font-heading inline-flex items-center gap-1.5 text-sm font-medium">
         <UtensilsCrossed className="size-4" aria-hidden="true" />
         食べた記録
       </h2>

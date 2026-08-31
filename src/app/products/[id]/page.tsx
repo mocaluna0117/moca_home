@@ -173,7 +173,7 @@ export default async function ProductPage({
       )}
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium">購入履歴</h2>
+        <h2 className="font-heading text-sm font-medium">購入履歴</h2>
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
@@ -217,7 +217,7 @@ export default async function ProductPage({
       {!isGone && product?.descriptionHtml && (
         <section className="flex flex-col gap-3">
           <Separator />
-          <h2 className="text-sm font-medium">商品説明</h2>
+          <h2 className="font-heading text-sm font-medium">商品説明</h2>
           <div
             className="text-sm leading-relaxed break-words [&_a]:underline [&_img]:my-2 [&_img]:h-auto [&_img]:max-w-full"
             // Sanitized in the scraper's parseProductPage (scripts, event

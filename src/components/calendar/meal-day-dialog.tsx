@@ -202,7 +202,7 @@ export function MealDayDialog({
               }
             >
               <div className="mb-2 flex items-center gap-2">
-                <h3 className="text-sm font-medium">{SLOT_LABEL_LONG[slot]}</h3>
+                <h3 className="font-heading text-sm font-medium">{SLOT_LABEL_LONG[slot]}</h3>
                 <span className="text-xs text-muted-foreground tabular-nums">
                   {slots[slot].length}品
                 </span>

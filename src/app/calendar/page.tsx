@@ -175,7 +175,7 @@ async function LogTab({
 
       {started.length > 0 && (
         <section className="rounded-lg border p-3">
-          <h2 className="mb-2 inline-flex items-center gap-1.5 text-sm font-medium">
+          <h2 className="font-heading mb-2 inline-flex items-center gap-1.5 text-sm font-medium">
             <Sparkles className="size-4" aria-hidden="true" />
             この月から食べ始めたもの
           </h2>
