@@ -4,7 +4,7 @@ import { eq, gte, inArray, isNull, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
-import { careVisitItems, careVisits, heartwormDoses } from "@/lib/db/schema";
+import { careVisitItems, careVisits, heartwormDoses, medicines } from "@/lib/db/schema";
 import {
   careItemsErrorMessage,
   validateCareItems,
@@ -113,11 +113,111 @@ export async function deleteCareVisit(id: number): Promise<ActionResult> {
   }
 }
 
+const MAX_MEDICINE_NAME = 100;
+
+export interface MedicineInput {
+  id?: number;
+  name: string;
+  forHeartworm: boolean;
+}
+
+/**
+ * 薬の登録・更新。名前は一意なので、同じ名前を2回登録しても増えない。
+ * 名前を直すと、その薬を選んである記録の表示も一緒に直る（記録は id を持つ）。
+ */
+export async function saveMedicine(
+  input: MedicineInput,
+): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
+  try {
+    const name = input.name.trim();
+    if (name === "") return { ok: false, error: "薬の名前を入力してください" };
+    if (name.length > MAX_MEDICINE_NAME) {
+      return { ok: false, error: `薬の名前は${MAX_MEDICINE_NAME}文字以内で入力してください` };
+    }
+
+    const duplicate = await db
+      .select({ id: medicines.id })
+      .from(medicines)
+      .where(eq(medicines.name, name))
+      .get();
+    if (duplicate && duplicate.id !== input.id) {
+      return { ok: false, error: "同じ名前の薬がすでに登録されています" };
+    }
+
+    if (input.id !== undefined) {
+      const existing = await db
+        .select({ id: medicines.id })
+        .from(medicines)
+        .where(eq(medicines.id, input.id))
+        .get();
+      if (!existing) return { ok: false, error: "薬が見つかりません" };
+      await db
+        .update(medicines)
+        .set({ name, forHeartworm: input.forHeartworm, updatedAt: now() })
+        .where(eq(medicines.id, input.id))
+        .run();
+      // 写しも合わせて直す。薬を消したあとも読める名前を最新に保つため
+      await db
+        .update(heartwormDoses)
+        .set({ label: name, updatedAt: now() })
+        .where(eq(heartwormDoses.medicineId, input.id))
+        .run();
+      revalidateCare();
+      return { ok: true, id: input.id };
+    }
+
+    const created = await db
+      .insert(medicines)
+      .values({
+        name,
+        forHeartworm: input.forHeartworm,
+        createdAt: now(),
+        updatedAt: now(),
+      })
+      .returning({ id: medicines.id })
+      .get();
+    revalidateCare();
+    return { ok: true, id: created.id };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "保存に失敗しました",
+    };
+  }
+}
+
+/**
+ * 薬を消す。**記録は消えない。** 予定側の medicine_id を先に外し、
+ * 名前の写し（label）を残すので、過去に何を飲ませたかは読める。
+ *
+ * DB の外部キーに任せないのは、この列が ALTER TABLE ADD COLUMN で
+ * 足されていて REFERENCES 句が付いていないため（schema.ts のコメント参照）。
+ * 任せると、存在しない薬IDを指したままの行が残る。
+ */
+export async function deleteMedicine(id: number): Promise<ActionResult> {
+  try {
+    await db
+      .update(heartwormDoses)
+      .set({ medicineId: null, updatedAt: now() })
+      .where(eq(heartwormDoses.medicineId, id))
+      .run();
+    await db.delete(medicines).where(eq(medicines.id, id)).run();
+    revalidateCare();
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "削除に失敗しました",
+    };
+  }
+}
+
 export interface HeartwormPlanInput {
   startMonth: string;
   endMonth: string;
   dayOfMonth: number;
-  label: string | null;
+  /** 登録済みの薬。null なら未選択 */
+  medicineId: number | null;
 }
 
 const PLAN_ERROR: Record<string, string> = {
@@ -145,7 +245,18 @@ export async function generateHeartwormSchedule(
       return { ok: false, error: PLAN_ERROR[planned.error] ?? "予定を作れませんでした" };
     }
 
-    const label = input.label?.trim() ? input.label.trim().slice(0, 100) : null;
+    // 名前は登録側から引く。画面から来た文字列は信用しない
+    const medicine =
+      input.medicineId === null
+        ? null
+        : ((await db
+            .select({ id: medicines.id, name: medicines.name })
+            .from(medicines)
+            .where(eq(medicines.id, input.medicineId))
+            .get()) ?? null);
+    if (input.medicineId !== null && medicine === null) {
+      return { ok: false, error: "選んだ薬が見つかりません" };
+    }
     const existing = new Set(
       (
         await db
@@ -163,7 +274,8 @@ export async function generateHeartwormSchedule(
         .insert(heartwormDoses)
         .values({
           scheduledDate: date,
-          label,
+          medicineId: medicine?.id ?? null,
+          label: medicine?.name ?? null,
           createdAt: now(),
           updatedAt: now(),
         })
@@ -186,7 +298,8 @@ export interface HeartwormRecordInput {
   id: number;
   /** null にすると「まだ飲ませていない」に戻す */
   givenDate: string | null;
-  label: string | null;
+  /** 登録済みの薬。null なら未選択 */
+  medicineId: number | null;
   note: string | null;
 }
 
@@ -205,11 +318,24 @@ export async function recordHeartwormDose(
       .get();
     if (!existing) return { ok: false, error: "予定が見つかりません" };
 
+    const medicine =
+      input.medicineId === null
+        ? null
+        : ((await db
+            .select({ id: medicines.id, name: medicines.name })
+            .from(medicines)
+            .where(eq(medicines.id, input.medicineId))
+            .get()) ?? null);
+    if (input.medicineId !== null && medicine === null) {
+      return { ok: false, error: "選んだ薬が見つかりません" };
+    }
+
     await db
       .update(heartwormDoses)
       .set({
         givenDate: input.givenDate,
-        label: input.label?.trim() ? input.label.trim().slice(0, 100) : null,
+        medicineId: medicine?.id ?? null,
+        label: medicine?.name ?? null,
         note: input.note?.trim() ? input.note.trim().slice(0, MAX_NOTE) : null,
         updatedAt: now(),
       })

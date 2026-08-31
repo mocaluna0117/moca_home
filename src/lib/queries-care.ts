@@ -3,7 +3,7 @@ import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { careVisitItems, careVisits, heartwormDoses } from "@/lib/db/schema";
+import { careVisitItems, careVisits, heartwormDoses, medicines } from "@/lib/db/schema";
 import { totalYen } from "@/lib/care";
 import type { CareKind, DateStr } from "@/lib/calendar";
 import type { DoseRow } from "@/lib/heartworm";
@@ -117,17 +117,73 @@ export async function getCareDates(
   return map;
 }
 
+export interface MedicineRow {
+  id: number;
+  name: string;
+  forHeartworm: boolean;
+  /** この薬を選んである予定の数。削除の影響が見えるように数える */
+  usedCount: number;
+}
+
+/** 登録済みの薬。名前順。 */
+export async function getMedicines(): Promise<MedicineRow[]> {
+  const rows = await db
+    .select({
+      id: medicines.id,
+      name: medicines.name,
+      forHeartworm: medicines.forHeartworm,
+      usedCount: sql<number>`(
+        select count(*) from ${heartwormDoses}
+        where ${heartwormDoses.medicineId} = ${medicines.id}
+      )`,
+    })
+    .from(medicines)
+    .orderBy(asc(medicines.name))
+    .all();
+  return rows;
+}
+
+/** フィラリアの選択肢。for_heartworm を立てた薬だけ */
+export async function getHeartwormMedicines(): Promise<
+  { id: number; name: string }[]
+> {
+  return db
+    .select({ id: medicines.id, name: medicines.name })
+    .from(medicines)
+    .where(eq(medicines.forHeartworm, true))
+    .orderBy(asc(medicines.name))
+    .all();
+}
+
 export interface HeartwormRow extends DoseRow {
+  medicineId: number | null;
+  /** 表示に使う名前。登録済みの薬なら今の名前、消された薬なら写しが残る */
   label: string | null;
   note: string | null;
   remindError: string | null;
 }
 
-/** 予定を日付順に。過去も未来もまとめて返す（件数が高々数十のため） */
+/**
+ * 予定を日付順に。過去も未来もまとめて返す（件数が高々数十のため）。
+ *
+ * 薬名は登録側を優先する。薬の名前を直したら過去の記録の表示も直る。
+ * 薬を消した場合は medicine_id が null になり、写し（label）が残る。
+ */
 export async function getHeartwormDoses(): Promise<HeartwormRow[]> {
   const rows = await db
-    .select()
+    .select({
+      id: heartwormDoses.id,
+      scheduledDate: heartwormDoses.scheduledDate,
+      givenDate: heartwormDoses.givenDate,
+      remindedAt: heartwormDoses.remindedAt,
+      medicineId: heartwormDoses.medicineId,
+      label: heartwormDoses.label,
+      note: heartwormDoses.note,
+      remindError: heartwormDoses.remindError,
+      medicineName: medicines.name,
+    })
     .from(heartwormDoses)
+    .leftJoin(medicines, eq(medicines.id, heartwormDoses.medicineId))
     .orderBy(asc(heartwormDoses.scheduledDate))
     .all();
   return rows.map((r) => ({
@@ -135,7 +191,8 @@ export async function getHeartwormDoses(): Promise<HeartwormRow[]> {
     scheduledDate: r.scheduledDate,
     givenDate: r.givenDate,
     remindedAt: r.remindedAt,
-    label: r.label,
+    medicineId: r.medicineId,
+    label: r.medicineName ?? r.label,
     note: r.note,
     remindError: r.remindError,
   }));

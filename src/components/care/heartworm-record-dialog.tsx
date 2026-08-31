@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { MedicineSelect, type MedicineOption } from "@/components/care/medicine-select";
 import { deleteHeartwormDose, recordHeartwormDose } from "@/lib/actions-care";
 import { callAction } from "@/lib/call-action";
 import type { DateStr } from "@/lib/calendar";
@@ -25,19 +26,23 @@ import { formatDate } from "@/lib/format";
 export function HeartwormRecordDialog({
   dose,
   today,
+  medicines,
 }: {
   dose: {
     id: number;
     scheduledDate: DateStr;
     givenDate: DateStr | null;
+    medicineId: number | null;
     label: string | null;
     note: string | null;
   };
   today: DateStr;
+  /** フィラリア用として登録された薬だけ */
+  medicines: MedicineOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [givenDate, setGivenDate] = useState(dose.givenDate ?? "");
-  const [label, setLabel] = useState(dose.label ?? "");
+  const [medicineId, setMedicineId] = useState<number | null>(dose.medicineId);
   const [note, setNote] = useState(dose.note ?? "");
   const [isPending, startTransition] = useTransition();
 
@@ -48,7 +53,7 @@ export function HeartwormRecordDialog({
     if (next) {
       // 未実施なら「今日飲ませた」がいちばん多いので、初期値を今日にする
       setGivenDate(dose.givenDate ?? today);
-      setLabel(dose.label ?? "");
+      setMedicineId(dose.medicineId);
       setNote(dose.note ?? "");
     }
   }
@@ -59,7 +64,7 @@ export function HeartwormRecordDialog({
         recordHeartwormDose({
           id: dose.id,
           givenDate: nextGiven,
-          label: label.trim() || null,
+          medicineId,
           note: note.trim() || null,
         }),
       );
@@ -117,12 +122,18 @@ export function HeartwormRecordDialog({
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">薬の名前（任意）</span>
-            <Input
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="例: モキシデック チュアブル"
+            <span className="text-sm font-medium">薬（任意）</span>
+            <MedicineSelect
+              value={medicineId}
+              onChange={setMedicineId}
+              options={medicines}
+              emptyHint="「薬」タブでフィラリア予防薬を登録すると、ここで選べます。"
             />
+            {dose.medicineId === null && dose.label && (
+              <span className="text-xs text-muted-foreground">
+                以前の記録: {dose.label}（登録から消された薬）
+              </span>
+            )}
           </label>
 
           <label className="flex flex-col gap-1.5">

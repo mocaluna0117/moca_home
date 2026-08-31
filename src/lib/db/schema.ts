@@ -350,6 +350,37 @@ export const careVisitItems = sqliteTable(
 );
 
 /**
+ * 薬の登録。ケアの「薬」タブで管理する。
+ *
+ * 20&20 のカタログとは別物。フィラリア薬は病院で処方されるもので
+ * カタログに存在しないため、products とは紐づけない。
+ *
+ * for_heartworm はただの分類。フィラリアの選択肢をこれで絞るので、
+ * 内服薬や外用薬をまとめて登録しても候補が散らからない。
+ *
+ * 名前は一意。同じ薬を2回登録しても増えないようにするためで、
+ * 名前を直せば、その薬を選んである過去の記録の表示も一緒に直る
+ * （記録側は medicine_id で参照しつつ label にも写しを持つ）。
+ */
+export const medicines = sqliteTable(
+  "medicines",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    /** フィラリア予防薬か。フィラリアの選択肢はこれで絞る */
+    forHeartworm: integer("for_heartworm", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("medicines_name_idx").on(t.name),
+    index("medicines_for_heartworm_idx").on(t.forHeartworm),
+  ],
+);
+
+/**
  * フィラリア予防薬。**予定と実績を1行にまとめる。**
  *
  * 予定を先に作り、飲ませたら given_date を埋める。分けると
@@ -374,6 +405,17 @@ export const heartwormDoses = sqliteTable(
     scheduledDate: text("scheduled_date").notNull(),
     /** 実際に飲ませた日, DATE ONLY。null なら未実施 */
     givenDate: text("given_date"),
+    /**
+     * 登録した薬。名前の写し（label）を別に持つのは、薬を消したあとも
+     * 何を飲ませたかが読めるようにするため（order_items が product_id と
+     * product_name を両方持つのと同じ作法）。
+     *
+     * **DB側の外部キーは当てにしない。** この列は既存テーブルへの
+     * ALTER TABLE ADD COLUMN で足されるが、SQLite のこの経路では
+     * REFERENCES 句が落ちる（ローカルも本番も実際に付いていない）。
+     * そのため deleteMedicine() が明示的にこの列を null に戻す。
+     */
+    medicineId: integer("medicine_id"),
     /** 薬の名前（スナップショット）。例 "モキシデック チュアブル" */
     label: text("label"),
     note: text("note"),
@@ -394,6 +436,7 @@ export const heartwormDoses = sqliteTable(
   ],
 );
 
+export type Medicine = typeof medicines.$inferSelect;
 export type CareVisit = typeof careVisits.$inferSelect;
 export type CareVisitItem = typeof careVisitItems.$inferSelect;
 export type HeartwormDose = typeof heartwormDoses.$inferSelect;

@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { MedicineSelect, type MedicineOption } from "@/components/care/medicine-select";
 import { generateHeartwormSchedule } from "@/lib/actions-care";
 import { callAction } from "@/lib/call-action";
 import type { DateStr } from "@/lib/calendar";
@@ -23,7 +24,14 @@ import { defaultSchedulePlan, generateDoseDates } from "@/lib/heartworm";
 import { formatDate } from "@/lib/format";
 
 /** 期間を指定して予定をまとめて作る。すでにある日は飛ばす。 */
-export function HeartwormPlanDialog({ today }: { today: DateStr }) {
+export function HeartwormPlanDialog({
+  today,
+  medicines,
+}: {
+  today: DateStr;
+  /** フィラリア用として登録された薬だけ */
+  medicines: MedicineOption[];
+}) {
   const [open, setOpen] = useState(false);
   // 既定値は今日を見て決める。固定で5月〜11月にすると、8月に開いたときに
   // 5・6・7月というすでに過ぎた日が提案されてしまう
@@ -31,7 +39,7 @@ export function HeartwormPlanDialog({ today }: { today: DateStr }) {
   const [startMonth, setStartMonth] = useState(initial.startMonth);
   const [endMonth, setEndMonth] = useState(initial.endMonth);
   const [day, setDay] = useState(String(initial.dayOfMonth));
-  const [label, setLabel] = useState("");
+  const [medicineId, setMedicineId] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(next: boolean) {
@@ -41,7 +49,7 @@ export function HeartwormPlanDialog({ today }: { today: DateStr }) {
       setStartMonth(fresh.startMonth);
       setEndMonth(fresh.endMonth);
       setDay(String(fresh.dayOfMonth));
-      setLabel("");
+      setMedicineId(null);
     }
   }
 
@@ -62,7 +70,7 @@ export function HeartwormPlanDialog({ today }: { today: DateStr }) {
           startMonth,
           endMonth,
           dayOfMonth: Number(day),
-          label: label.trim() || null,
+          medicineId,
         }),
       );
       if (res.ok) {
@@ -132,11 +140,12 @@ export function HeartwormPlanDialog({ today }: { today: DateStr }) {
           </div>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">薬の名前（任意）</span>
-            <Input
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="例: モキシデック チュアブル"
+            <span className="text-sm font-medium">薬（任意）</span>
+            <MedicineSelect
+              value={medicineId}
+              onChange={setMedicineId}
+              options={medicines}
+              emptyHint="「薬」タブでフィラリア予防薬を登録すると、ここで選べます。"
             />
           </label>
 

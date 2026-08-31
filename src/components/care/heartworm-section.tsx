@@ -22,11 +22,14 @@ export function HeartwormSection({
   doses,
   today,
   mailConfigured,
+  medicines,
 }: {
   doses: HeartwormRow[];
   today: DateStr;
   /** メールの設定が揃っているか。揃っていなければリマインドは飛ばない */
   mailConfigured: boolean;
+  /** フィラリア用として登録された薬だけ */
+  medicines: { id: number; name: string }[];
 }) {
   const withStatus = doses.map((d) => ({ ...d, status: doseStatus(d, today) }));
   const dueNow = withStatus.filter((d) => d.status === "today" || d.status === "overdue");
@@ -50,7 +53,7 @@ export function HeartwormSection({
         )}
         <div className="ml-auto flex items-center gap-2">
           <HeartwormClearDialog today={today} targets={clearable} />
-          <HeartwormPlanDialog today={today} />
+          <HeartwormPlanDialog today={today} medicines={medicines} />
         </div>
       </div>
 
@@ -137,10 +140,12 @@ export function HeartwormSection({
                     id: d.id,
                     scheduledDate: d.scheduledDate,
                     givenDate: d.givenDate,
+                    medicineId: d.medicineId,
                     label: d.label,
                     note: d.note,
                   }}
                   today={today}
+                  medicines={medicines}
                 />
                 <HeartwormDeleteButton
                   id={d.id}
