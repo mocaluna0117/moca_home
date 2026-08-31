@@ -1,11 +1,19 @@
 # Vercel へのデプロイ手順
 
+- GitHub リポジトリ: `mocaluna0117/moca_home`
+- Vercel プロジェクト: `moca-home`
+- 本番URL: `https://moca-home.vercel.app`
+
+> 旧URL `20and20managementapp.vercel.app` は、プロジェクト改名前に発行された
+> ものです。Vercel は改名前のURLが生き続けることを保証しないので、
+> ブックマークは新URLに張り替えてください。
+
 Vercel はファイルを保存できないため、SQLite の中身を **Turso**(SQLite互換のマネージドDB)へ移します。
 コードは libSQL 1本に統一済みで、ローカルは `file:` URL、本番は Turso URL を見るだけの違いです。
 
 ## 0. 前提
 
-- GitHub リポジトリ: `mocaluna0117/moca_home`(現在 **Public**。気になる場合は Private に変更を推奨)
+- リポジトリは現在 **Public** です。気になる場合は Private に変更を推奨します。
 - ローカルの `data/app.db` に取り込み済みのデータ(注文69件・商品1,480件)
 
 ## 1. Turso のセットアップ（あなたの操作・ブラウザのみ）
@@ -167,7 +175,7 @@ Vercel の **Settings → Environment Variables** に Secret として追加し�
 | `GMAIL_APP_PASSWORD` | 上で発行した16桁（Secret にする） |
 | `HEARTWORM_MAIL_TO` | 宛先。カンマ区切りで複数可（5件まで） |
 | `CRON_SECRET` | 16文字以上のランダムな文字列（Secret にする） |
-| `NEXT_PUBLIC_APP_URL` | 省略可。メール本文に載せるURL |
+| `NEXT_PUBLIC_APP_URL` | 省略可。メール本文に載せるURL（`https://moca-home.vercel.app`） |
 
 `CRON_SECRET` は次のように作れます。
 
