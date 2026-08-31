@@ -3,6 +3,8 @@
 - GitHub リポジトリ: `mocaluna0117/moca_home`
 - Vercel プロジェクト: `moca-home`
 - 本番URL: `https://moca-home.vercel.app`
+  （`moca-home-mocalunas-projects.vercel.app` でも同じものが開きます）
+- ローカルの作業フォルダ: `~/moca_home`
 
 > 旧URL `20and20managementapp.vercel.app` は、プロジェクト改名前に発行された
 > ものです。Vercel は改名前のURLが生き続けることを保証しないので、
