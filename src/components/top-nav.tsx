@@ -32,9 +32,12 @@ export function TopNav() {
             key={s.href}
             href={s.href}
             className={cn(
-              "rounded-md px-2 py-1 text-sm transition-colors",
+              // Hachi Maru Pop は weight 400 しかないので、font-semibold を足すと
+              // ブラウザの合成擬似ボールドになりアプリ名と描画が揃わない。
+              // アクティブは色差だけで示す。
+              "rounded-md px-2 py-1 font-cute text-sm transition-colors",
               active
-                ? "font-semibold text-foreground"
+                ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
