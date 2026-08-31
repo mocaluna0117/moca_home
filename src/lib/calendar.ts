@@ -25,6 +25,25 @@ export const SLOT_LABEL_LONG: Record<MealSlot, string> = {
 };
 
 /** "YYYY-MM" */
+/**
+ * ケア記録の種類。トリミングと通院は形が同じなので1テーブルにまとめ、
+ * ここで区別する（食事の MealSlot と同じ考え方）。
+ *
+ * 値とラベルを schema.ts ではなくここに置くのは、クライアント側が
+ * ラベルを import するときに drizzle を引き込まないため。
+ */
+export const CARE_KINDS = ["trimming", "hospital"] as const;
+export type CareKind = (typeof CARE_KINDS)[number];
+
+export const CARE_KIND_LABEL: Record<CareKind, string> = {
+  trimming: "トリミング",
+  hospital: "通院",
+};
+
+export function isCareKind(v: unknown): v is CareKind {
+  return typeof v === "string" && (CARE_KINDS as readonly string[]).includes(v);
+}
+
 export type YearMonth = string;
 /** "YYYY-MM-DD" */
 export type DateStr = string;

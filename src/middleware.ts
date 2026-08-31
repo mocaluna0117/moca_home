@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { SESSION_COOKIE, isValidSession } from "@/lib/auth";
+import { CRON_PATH, cronAuthMatches } from "@/lib/cron-auth";
 
 /**
  * Gate everything except the login route and Next's own assets. This covers
@@ -8,6 +9,22 @@ import { SESSION_COOKIE, isValidSession } from "@/lib/auth";
  * which the matcher includes).
  */
 export async function middleware(request: NextRequest) {
+  // Vercel Cron has no session cookie. It sends Authorization: Bearer
+  // $CRON_SECRET instead. Check that here rather than excluding the path from
+  // the matcher — an excluded path is a URL outside the gate, and this repo
+  // already had a hole from exactly that (see config.matcher below).
+  //
+  // This runs before the APP_PASSWORD short-circuit so the branch behaves the
+  // same locally as in production: no header, no entry.
+  if (request.nextUrl.pathname === CRON_PATH) {
+    return cronAuthMatches(
+      request.headers.get("authorization"),
+      process.env.CRON_SECRET,
+    )
+      ? NextResponse.next()
+      : NextResponse.json({ error: "認証が必要です" }, { status: 401 });
+  }
+
   // No password configured (local dev) → the gate is disabled entirely.
   if (!process.env.APP_PASSWORD) return NextResponse.next();
 

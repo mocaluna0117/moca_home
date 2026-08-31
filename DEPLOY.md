@@ -147,11 +147,71 @@ Vercel の **Settings → Environment Variables** に Secret として追加し�
 
 気になる場合はキーを設定しないでください。写真の添付と拡大表示だけが動きます。
 
+## フィラリアのリマインドメール（任意）
+
+予定日の朝にメールでお知らせします。**未設定でも予定と実績の記録は使えます**
+（画面に「今日はフィラリアの日です」は出ます）。
+
+### 1. Gmail のアプリパスワードを発行する
+
+1. https://myaccount.google.com/security で **2段階認証をオン**にする
+2. https://myaccount.google.com/apppasswords を開く
+3. 名前を付けて作成すると **16桁**が表示される（4桁ずつ区切って出るが、
+   空白入りのままコピーしてよい。アプリ側で取り除く）
+
+### 2. Vercel に環境変数を追加する
+
+| 変数 | 値 |
+|---|---|
+| `GMAIL_USER` | 送信元にする Gmail アドレス |
+| `GMAIL_APP_PASSWORD` | 上で発行した16桁（Secret にする） |
+| `HEARTWORM_MAIL_TO` | 宛先。カンマ区切りで複数可（5件まで） |
+| `CRON_SECRET` | 16文字以上のランダムな文字列（Secret にする） |
+| `NEXT_PUBLIC_APP_URL` | 省略可。メール本文に載せるURL |
+
+`CRON_SECRET` は次のように作れます。
+
+```bash
+node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
+```
+
+**`CRON_SECRET` が未設定だと cron は 401 になり、リマインドは飛びません。**
+設定を忘れて誰でも叩ける口ができるより、動かないほうが気づけるためです。
+
+### 3. デプロイする
+
+`vercel.json` の `crons` は **デプロイ時に登録**されます。環境変数を足しただけでは
+反映されないので、Deployments → ⋯ → Redeploy を実行してください。
+
+### 動きの確認
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://<あなたのURL>/api/cron/heartworm
+```
+
+`{"today":"...","due":1,"sent":1}` が返れば送信できています。
+`due` が0なら今日送るべき予定がありません（予定が未来か、記録済みか、送信済み）。
+
+### 仕様
+
+- **cron は Hobby プランでは1日1回まで**。`0 23 * * *`（UTC）＝ 日本時間の朝8時台に走ります
+- 送る前に「送信済み」の印を付けてから送るので、cron が二重に走っても同じメールは1通だけ
+- 送信に失敗したら印を戻し、理由を記録します（画面に出ます）。翌朝もう一度試みます
+- cron が止まっていた日を取り戻すため、**7日前までの未送信ぶん**を拾います
+- 「飲ませた」を記録すると、その予定のリマインドは止まります
+- Vercel の Function は **25番ポートが塞がれています**が 465 と 587 は通ります。
+  既定は465。塞がれた場合は `SMTP_HOST` / `SMTP_PORT` で差し替えられます
+
 ## 注意点
 
 - **Vercel のデータセンターIPからショップにログイン**します。弾かれるようなら注文同期も CLI 実行に切り替えてください（コード変更は不要、`npm run sync:prod`）
 - `.env.local` と `data/` は gitignore 済み。認証情報をコミットしないでください
 - ローカル開発は今まで通り。`APP_PASSWORD` を未設定にすればログイン画面は出ません
+- **`src/middleware.ts` の matcher に新しい除外を足さないこと。** 除外は
+  「認証ゲートの外にあるURL」を増やします。cron の経路も matcher からは外さず、
+  middleware の中で `Authorization: Bearer` を検証して通しています。
+  なお middleware は edge runtime でビルドされるため、そこから import する
+  `src/lib/cron-auth.ts` は `node:crypto` も `Buffer` も使えません
 - **`src/middleware.ts` の matcher に「拡張子で終わるパス」の除外を足さないこと。**
   以前これがあったため、`/api/vaccination-photos/1.jpg` が未認証で証明書を返していました
   （ルート側が `parseInt("1.jpg")` を 1 と読むため）。URLのIDは

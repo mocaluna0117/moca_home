@@ -18,7 +18,7 @@ const PUSH_TABLES = [
   "vaccination_photos",
   "product_favorites",
   "care_visits",
-  "care_items",
+  "care_visit_items",
   "heartworm_doses",
 ] as const;
 

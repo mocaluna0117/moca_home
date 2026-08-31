@@ -8,10 +8,17 @@ import { cn } from "@/lib/utils";
 const SECTIONS = [
   { href: "/", label: "購入履歴" },
   { href: "/calendar", label: "カレンダー" },
+  { href: "/care", label: "ケア" },
   { href: "/favorites", label: "お気に入り" },
 ] as const;
 
-/** ヘッダーのセクション切替。アプリのトップレベルは購入履歴とカレンダーの2つ。 */
+/**
+ * ヘッダーのセクション切替。
+ *
+ * ケアを /calendar のタブにしなかったのは、カレンダーが既に3タブあり
+ * 狭い画面で潰れるのと、カレンダーが「その日に何をしたか」の日次ログ、
+ * ケアが「いくら使ったか・次はいつか」の管理で、答える問いが違うため。
+ */
 export function TopNav() {
   const pathname = usePathname();
 
