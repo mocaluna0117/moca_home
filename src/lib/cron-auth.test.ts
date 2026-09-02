@@ -34,6 +34,6 @@ describe("cronAuthMatches", () => {
   });
 
   it("パスは1か所で定義する", () => {
-    assert.equal(CRON_PATH, "/api/cron/heartworm");
+    assert.equal(CRON_PATH, "/api/cron/daily");
   });
 });

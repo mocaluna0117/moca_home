@@ -8,6 +8,7 @@ import {
 } from "@/components/calendar/month-grid";
 import { MealDayDialog, type DayDraft } from "@/components/calendar/meal-day-dialog";
 import { MonthNav } from "@/components/calendar/month-nav";
+import { UsualMealSection } from "@/components/calendar/usual-meal-section";
 import { VaccinationSection } from "@/components/calendar/vaccination-section";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ProductName } from "@/components/product-name";
@@ -42,6 +43,7 @@ import {
   getMealMonth,
   getPreviousSlot,
   getStartedInMonth,
+  getUsualMeals,
   getVaccinationDates,
   getVaccinationSchedule,
   getVaccinations,
@@ -51,7 +53,7 @@ import { getFavoriteProductIds } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-type Tab = "log" | "foods" | "vaccination";
+type Tab = "log" | "usual" | "foods" | "vaccination";
 
 function toDraft(date: DateStr, meals: DayMeals | null): DayDraft {
   const map = (rows: DayMeals["morning"]) =>
@@ -81,12 +83,16 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
   // 不正な ?m= は 404 にせず今月へフォールバックする
   const ym = parseYearMonth(rawM) ?? thisMonth;
   const tab: Tab =
-    rawTab === "foods" || rawTab === "vaccination" ? rawTab : "log";
+    rawTab === "usual" || rawTab === "foods" || rawTab === "vaccination"
+      ? rawTab
+      : "log";
 
   const grid = buildMonthGrid(ym)!;
 
   const tabs = [
     { value: "log", label: "記録", href: `/calendar?m=${ym}` },
+    // 見出しは「いつものご飯」。タブは4本目なので幅の都合で「いつもの」
+    { value: "usual", label: "いつもの", href: `/calendar?m=${ym}&tab=usual` },
     { value: "foods", label: "食べたもの", href: `/calendar?m=${ym}&tab=foods` },
     {
       value: "vaccination",
@@ -99,10 +105,18 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <MonthNav grid={grid} tab={tab} thisMonth={thisMonth} />
-        <SegmentedNav items={tabs} current={tab} />
+        {/*
+          タブが4本になり、320px では横に並びきらない。ヘッダーの TopNav と
+          同じ扱いで、この行だけ横スクロールを許してページ全体が横に動くのを
+          防ぐ（sm 以上は今までどおり月ナビと同じ行に収まる）。
+        */}
+        <div className="overflow-x-auto sm:overflow-x-visible">
+          <SegmentedNav items={tabs} current={tab} />
+        </div>
       </div>
 
       {tab === "log" && <LogTab ym={ym} grid={grid} today={today} />}
+      {tab === "usual" && <UsualTab today={today} />}
       {tab === "foods" && <FoodsTab />}
       {tab === "vaccination" && (
         <VaccinationSection
@@ -231,6 +245,27 @@ async function LogTab({
       <MonthGridView grid={grid} data={data} today={today} />
       <MonthAgendaView grid={grid} data={data} today={today} />
     </>
+  );
+}
+
+/**
+ * 「いつものご飯」タブ。登録の一覧と、今日その時間に記録があるかだけを渡す。
+ *
+ * getMealDay は「記録」タブが今日の下書きを作るのに既に使っているものと同じ。
+ * 「今日は記録あり／まだ」の答えが2本のクエリに分かれないよう、専用のクエリは
+ * 足さない（月グリッドの印と同じ方針）。
+ */
+async function UsualTab({ today }: { today: DateStr }) {
+  const [rows, day] = await Promise.all([getUsualMeals(), getMealDay(today)]);
+
+  return (
+    <UsualMealSection
+      rows={rows}
+      todayRecorded={{
+        morning: day.morning.length > 0,
+        evening: day.evening.length > 0,
+      }}
+    />
   );
 }
 

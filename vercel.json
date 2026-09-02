@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/cron/heartworm",
+      "path": "/api/cron/daily",
       "schedule": "0 23 * * *"
     }
   ]

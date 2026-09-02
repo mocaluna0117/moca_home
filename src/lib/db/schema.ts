@@ -245,6 +245,60 @@ export const mealEntries = sqliteTable(
   ],
 );
 
+/**
+ * 「いつものご飯」の登録。朝・夜それぞれに登録しておくと、毎朝8時の cron が
+ * その日の meal_entries として同じ形の行を入れる（「いつもの」印は付けない
+ * ので、入ったあとは手で書いた記録と1行も違わない）。
+ *
+ * 列は meal_entries の食べ物側とまったく同じで、**date が無いだけ**。
+ *
+ * **JSON 1列にしない** — 検証・並び（seq）・商品名の解決が meal_entries と
+ * 同じ形なので、行にすれば resolveMealEntry をそのまま再利用できる。
+ * JSON にすると同じことをする第2の検証系がここにできる。
+ *
+ * **meal_entries に架空の date を入れて区別する形にもしない** — min(date) で
+ * 「いつから食べているか」を答える食歴・月グリッド・最近のごはんの全読み取りを
+ * 汚し、除外条件を1箇所書き忘れた日に黙って壊れる。別テーブルなら
+ * 「書き忘れ」が起こらない。
+ *
+ * slot は USUAL_SLOTS（morning / evening）で守る。CHECK は書かない —
+ * drizzle-kit push はこのリポジトリで実際に索引を落としたことがあり
+ * （heartworm_doses のコメント参照）、CHECK も同様に落ちうるので依存しない。
+ *
+ * **後から足す列は必ず nullable か既定値付き** — scripts/push-log-tables.ts の
+ * syncColumns は既定値の無い NOT NULL 列を ALTER で足せない（SQLite の制約）。
+ * おやつを足すのも列ではなく slot の値でやる（dog_profile と同じ作法）。
+ */
+export const usualMeals = sqliteTable(
+  "usual_meals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** "morning" | "evening"。おやつは入らない（朝と夜だけ） */
+    slot: text("slot").$type<MealSlot>().notNull(),
+    /** スロット内の並び。保存ごとに添字で振り直す（meal_entries と同じ） */
+    seq: integer("seq").notNull().default(0),
+    /** null = カタログ外（手作り・他社製品） */
+    productId: integer("product_id").references(() => products.id),
+    /**
+     * 登録した時の名前の写し。表示・記録には products.name を優先する
+     * （改名はスクレイパが行うのでフックできる書き込みが無く、解決は
+     * 読み取り時にやる）。カタログから消えても何を登録したかは読める。
+     */
+    label: text("label").notNull(),
+    /** 分量の自由入力 "50g" / "1袋"（meal_entries と同じ） */
+    amount: text("amount"),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  // 索引は1本だけ（高々20行で、常に全件を slot, seq 順に読むため）。
+  // 名前を付けるのは scripts/push-log-tables.ts が sqlite_master の
+  // CREATE 文を再生する仕組みで、無名だと本番に届かないから。
+  (t) => [index("usual_meals_slot_idx").on(t.slot, t.seq)],
+);
+
+export type UsualMeal = typeof usualMeals.$inferSelect;
+
 /** ワクチン接種の記録。証明書の写真は vaccination_photos に 1..n */
 export const vaccinations = sqliteTable(
   "vaccinations",

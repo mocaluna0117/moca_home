@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import {
   mealEntries,
   products,
+  usualMeals,
   vaccinationPhotos,
   vaccinations,
   type MealEntry,
@@ -20,6 +21,7 @@ import {
   type VaccinationPhoto,
 } from "@/lib/db/schema";
 import { parseJsonArray } from "@/lib/format";
+import { isUsualSlot, type UsualSlot } from "@/lib/usual-meals";
 
 function firstImage(raw: string | null): string | null {
   const arr = parseJsonArray(raw);
@@ -160,6 +162,74 @@ export async function getRecentMealDays(limit = 4): Promise<DayMeals[]> {
 
   // 新しい順。日ごとの組み立ては既存の groupByDate をそのまま再利用する
   return [...groupByDate(rows).values()].sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+// ------------------------------------------------------------------ いつものご飯
+
+export interface UsualMealRow {
+  id: number;
+  slot: UsualSlot;
+  seq: number;
+  productId: number | null;
+  /** 表示・記録に使う名前。カタログにあれば今の products.name、無ければ登録時の写し */
+  label: string;
+  amount: string | null;
+  note: string | null;
+  imageUrl: string | null;
+}
+
+/**
+ * 「いつものご飯」の登録を全件。高々20行なので1文で読み切る。
+ *
+ * **名前は読み取り時に解決する**（getHeartwormDoses と同じ）。カタログに
+ * あれば今の products.name、無ければ登録時の写し。saveMedicine のように
+ * 書き込み時に写しを直す方式にしないのは、カタログの改名はスクレイパが
+ * 行い、フックできるアクションが無いため。
+ *
+ * `?.trim() ||` の `||` は**必ず要る**。products.name は nullable
+ * （fetch_status='pending' のスタブ）で、空文字をそのまま返すと
+ * applyUsualMeals が NOT NULL の meal_entries.label に空文字を入れようとして
+ * その日の記録を落とす。
+ *
+ * ORDER BY の slot は文字列順なので夜（evening）が先に来る。**朝 → 夜の
+ * 並びは USUAL_SLOTS が決める**（groupUsualBySlot / planUsualApply）ので、
+ * ここが保証するのは「スロットごとに seq 順で固まっている」ことだけ。
+ */
+export async function getUsualMeals(): Promise<UsualMealRow[]> {
+  const rows = await db
+    .select({
+      id: usualMeals.id,
+      slot: usualMeals.slot,
+      seq: usualMeals.seq,
+      productId: usualMeals.productId,
+      label: usualMeals.label,
+      amount: usualMeals.amount,
+      note: usualMeals.note,
+      productName: products.name,
+      productImages: products.imageUrls,
+    })
+    .from(usualMeals)
+    .leftJoin(products, eq(products.id, usualMeals.productId))
+    .orderBy(asc(usualMeals.slot), asc(usualMeals.seq), asc(usualMeals.id))
+    .all();
+
+  const out: UsualMealRow[] = [];
+  for (const r of rows) {
+    // 列の型は MealSlot 汎用（おやつを後から足せる形にしてある）。この機能が
+    // 適用するのは朝と夜だけなので、範囲外は読み取りの時点で落とす
+    if (!isUsualSlot(r.slot)) continue;
+    out.push({
+      id: r.id,
+      slot: r.slot,
+      seq: r.seq,
+      productId: r.productId,
+      label: r.productName?.trim() || r.label,
+      amount: r.amount,
+      note: r.note,
+      imageUrl: firstImage(r.productImages),
+    });
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ 食歴

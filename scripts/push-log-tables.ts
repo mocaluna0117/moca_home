@@ -14,6 +14,9 @@ import { createClient } from "@libsql/client";
 
 const PUSH_TABLES = [
   "meal_entries",
+  // 忘れると本番だけ /calendar が no such table: usual_meals で 500 になる
+  // （getDogProfile() のような try/catch の受け皿がこの経路には無い）。
+  "usual_meals",
   "vaccinations",
   "vaccination_photos",
   "product_favorites",

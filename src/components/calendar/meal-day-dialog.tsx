@@ -1,12 +1,15 @@
 "use client";
 
-import { CalendarDays, CopyPlus, Plus, Search, Trash2 } from "lucide-react";
+import { CalendarDays, CopyPlus } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Thumb } from "@/components/catalog-picker";
-import { ProductSearchDialog } from "@/components/product-search-dialog";
-import { ProductName } from "@/components/product-name";
+import {
+  MealItemRows,
+  toRow,
+  type DraftRow,
+  type RowState,
+} from "@/components/calendar/meal-item-rows";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,7 +21,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   MEAL_SLOTS,
   SLOT_LABEL_LONG,
@@ -37,45 +39,10 @@ export interface DayDraft {
   treat: DraftRow[];
 }
 
-export interface DraftRow {
-  id?: number;
-  productId: number | null;
-  label: string;
-  amount: string | null;
-  note: string | null;
-  imageUrl: string | null;
-}
-
-interface RowState extends DraftRow {
-  key: number;
-  /** 商品を選ぶモードか、自由入力モードか */
-  mode: "product" | "free";
-  query: string;
-}
-
-let nextKey = 1;
-
-function toRow(d: DraftRow): RowState {
-  return {
-    ...d,
-    key: nextKey++,
-    mode: d.productId === null && d.label ? "free" : "product",
-    query: "",
-  };
-}
-
-function emptyRow(): RowState {
-  return {
-    key: nextKey++,
-    productId: null,
-    label: "",
-    amount: null,
-    note: null,
-    imageUrl: null,
-    mode: "product",
-    query: "",
-  };
-}
+// 行の形（DraftRow）は行エディタと同じものを使う。ここから出しているのは
+// app/calendar/page.tsx・month-grid.tsx・queries-home.ts が DayDraft と
+// 一緒にこのパスから取っているため
+export type { DraftRow };
 
 type Slots = Record<MealSlot, RowState[]>;
 
@@ -84,6 +51,16 @@ function toSlots(draft: DayDraft): Slots {
     morning: draft.morning.map(toRow),
     evening: draft.evening.map(toRow),
     treat: draft.treat.map(toRow),
+  };
+}
+
+function toKnownIds(draft: DayDraft): Record<MealSlot, number[]> {
+  const ids = (rows: DraftRow[]) =>
+    rows.map((r) => r.id).filter((id): id is number => id !== undefined);
+  return {
+    morning: ids(draft.morning),
+    evening: ids(draft.evening),
+    treat: ids(draft.treat),
   };
 }
 
@@ -112,26 +89,20 @@ export function MealDayDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [slots, setSlots] = useState<Slots>(() => toSlots(draft));
+  const [knownIds, setKnownIds] = useState<Record<MealSlot, number[]>>(() =>
+    toKnownIds(draft),
+  );
   const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
-    if (next) setSlots(toSlots(draft));
-  }
-
-  function patch(slot: MealSlot, key: number, p: Partial<RowState>) {
-    setSlots((s) => ({
-      ...s,
-      [slot]: s[slot].map((r) => (r.key === key ? { ...r, ...p } : r)),
-    }));
-  }
-
-  function addRow(slot: MealSlot) {
-    setSlots((s) => ({ ...s, [slot]: [...s[slot], emptyRow()] }));
-  }
-
-  function removeRow(slot: MealSlot, key: number) {
-    setSlots((s) => ({ ...s, [slot]: s[slot].filter((r) => r.key !== key) }));
+    if (next) {
+      setSlots(toSlots(draft));
+      // 開いた瞬間の draft から控える。開いているあいだに増えた行
+      // （朝8時の cron が入れた「いつものご飯」など）は、こちらの
+      // ペイロードに無くても消させないため
+      setKnownIds(toKnownIds(draft));
+    }
   }
 
   const valid = MEAL_SLOTS.every((slot) =>
@@ -148,7 +119,9 @@ export function MealDayDialog({
           amount: r.amount?.trim() ? r.amount.trim() : null,
           note: r.note?.trim() ? r.note.trim() : null,
         }));
-        const res = await callAction(() => saveMealSlot(draft.date, slot, payload));
+        const res = await callAction(() =>
+          saveMealSlot(draft.date, slot, payload, knownIds[slot]),
+        );
         if (!res.ok) {
           toast.error("保存に失敗しました", { description: res.error });
           return;
@@ -214,133 +187,12 @@ export function MealDayDialog({
                 </p>
               )}
 
-              <div className="flex flex-col gap-2">
-                {slots[slot].map((row) => (
-                  <div key={row.key} className="flex flex-col gap-2 rounded-md border p-2">
-                    {row.mode === "product" ? (
-                      row.productId === null ? (
-                        <>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <ProductSearchDialog
-                              prefetch={open}
-                              nested
-                              title={`${SLOT_LABEL_LONG[slot]}に食べたものを選ぶ`}
-                              description="20&20 の全商品から探せます。お気に入りは先頭に表示されます。"
-                              trigger={
-                                <>
-                                  <Search aria-hidden="true" />
-                                  商品を選ぶ
-                                </>
-                              }
-                              onSelect={(c) =>
-                                patch(slot, row.key, {
-                                  productId: c.id,
-                                  label: c.name,
-                                  imageUrl: c.imageUrl,
-                                  query: "",
-                                })
-                              }
-                            />
-                            <span className="text-xs text-muted-foreground">
-                              まだ選ばれていません
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            className="w-fit text-xs text-muted-foreground underline"
-                            onClick={() => patch(slot, row.key, { mode: "free" })}
-                          >
-                            商品リストにない（自由入力へ）
-                          </button>
-                        </>
-                      ) : (
-                        <div className="flex items-start gap-2">
-                          <Thumb src={row.imageUrl} alt="" />
-                          <span className="flex-1 text-sm leading-snug break-words">
-                            <ProductName name={row.label} />
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              patch(slot, row.key, {
-                                productId: null,
-                                label: "",
-                                imageUrl: null,
-                              })
-                            }
-                          >
-                            変更
-                          </Button>
-                        </div>
-                      )
-                    ) : (
-                      <>
-                        <Input
-                          value={row.label}
-                          onChange={(e) =>
-                            patch(slot, row.key, { label: e.target.value })
-                          }
-                          placeholder="食べたもの（例: 手作りごはん）"
-                          aria-label="食べたもの"
-                        />
-                        <button
-                          type="button"
-                          className="w-fit text-xs text-muted-foreground underline"
-                          onClick={() =>
-                            patch(slot, row.key, {
-                              mode: "product",
-                              label: "",
-                              productId: null,
-                            })
-                          }
-                        >
-                          商品リストから選ぶ
-                        </button>
-                      </>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={row.amount ?? ""}
-                        onChange={(e) =>
-                          patch(slot, row.key, { amount: e.target.value || null })
-                        }
-                        placeholder="分量（例: 50g）"
-                        aria-label="分量"
-                        className="w-32"
-                      />
-                      <Input
-                        value={row.note ?? ""}
-                        onChange={(e) =>
-                          patch(slot, row.key, { note: e.target.value || null })
-                        }
-                        placeholder="メモ（任意）"
-                        aria-label="メモ"
-                        className="flex-1"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="この行を削除"
-                        onClick={() => removeRow(slot, row.key)}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-2"
-                onClick={() => addRow(slot)}
-              >
-                <Plus aria-hidden="true" />
-                食べたものを追加
-              </Button>
+              <MealItemRows
+                rows={slots[slot]}
+                onChange={(next) => setSlots((s) => ({ ...s, [slot]: next }))}
+                pickerTitle={`${SLOT_LABEL_LONG[slot]}に食べたものを選ぶ`}
+                prefetch={open}
+              />
             </section>
           ))}
         </div>

@@ -12,8 +12,15 @@
  * 未認証閲覧の穴が空いている。中で Bearer を検証して通す。
  */
 
-/** cron が叩くパス。middleware と route の両方から参照する */
-export const CRON_PATH = "/api/cron/heartworm";
+/**
+ * cron が叩くパス。middleware と route の両方から参照する。
+ *
+ * **1本しか無いことが安全性の根拠。** 認証ゲートの穴をこの1本に閉じ込めるため、
+ * 仕事が増えても2本目を作らずここに相乗りさせる（Hobby の cron は1日1回だけ、
+ * という制約とも一致する）。だから名前は個別の仕事ではなく「毎日の仕事」。
+ * 変えるときは cron-auth.test.ts のリテラルと vercel.json の crons も一緒に。
+ */
+export const CRON_PATH = "/api/cron/daily";
 
 /** 長さの違いは漏れるが、中身は1文字ずつ比べても早期に抜けない */
 function safeEqual(a: string, b: string): boolean {
