@@ -2,10 +2,12 @@ import { CareSection } from "@/components/care/care-section";
 import { HeartwormSection } from "@/components/care/heartworm-section";
 import { MedicineSection } from "@/components/care/medicine-section";
 import { SegmentedNav } from "@/components/segmented-nav";
-import { todayJst } from "@/lib/calendar";
+import { todayJst, type CareKind, type DateStr } from "@/lib/calendar";
 import { nowJstIso } from "@/lib/format";
 import { isMailConfigured } from "@/lib/mail";
 import {
+  getCareCourses,
+  getCarePlaces,
   getCareVisits,
   getCareYearTotals,
   getHeartwormDoses,
@@ -53,13 +55,32 @@ export default async function CarePage({ searchParams }: PageProps<"/care">) {
           medicines={await getHeartwormMedicines()}
         />
       ) : (
-        <CareSection
-          kind={tab}
-          visits={await getCareVisits(tab)}
-          yearTotals={await getCareYearTotals(tab)}
-          today={today}
-        />
+        <CareTab kind={tab} today={today} />
       )}
     </div>
+  );
+}
+
+/**
+ * トリミング／通院のタブ。記録と、その記録で選ぶ登録（お店・コース）を
+ * 1往復で引く。コースの登録画面が出るのはトリミングだけ
+ * （care_courses は kind を持つが、通院ぶんの画面はまだ無い）。
+ */
+async function CareTab({ kind, today }: { kind: CareKind; today: DateStr }) {
+  const [visits, yearTotals, places, courses] = await Promise.all([
+    getCareVisits(kind),
+    getCareYearTotals(kind, today),
+    getCarePlaces(kind),
+    kind === "trimming" ? getCareCourses(kind) : Promise.resolve([]),
+  ]);
+  return (
+    <CareSection
+      kind={kind}
+      visits={visits}
+      yearTotals={yearTotals}
+      today={today}
+      places={places}
+      courses={courses}
+    />
   );
 }

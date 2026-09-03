@@ -17,7 +17,12 @@ import { doseStatus } from "./heartworm";
 
 export type ScheduleKind = "heartworm" | "vaccination" | "trimming";
 
-/** 緊急バンドに出る種類。トリミングは予定日を持てないので入らない */
+/**
+ * 緊急バンドに出る種類。トリミングは入らない — 予約は過ぎれば行ったものと
+ * みなす（schema.ts の care_visits）ので「おくれ」が存在せず、当日は
+ * 【2】次の予定の行が「今日」と言う。バンドは失敗と当日の警告の場所で、
+ * 予約の確認はそこに乗せない。
+ */
 export type UrgentKind = Extract<ScheduleKind, "heartworm" | "vaccination">;
 
 const SCHEDULE_LABEL: Record<ScheduleKind, string> = {
@@ -99,6 +104,17 @@ export interface VaccinationRecord {
   nextDueDate: DateStr | null;
 }
 
+/**
+ * トリミングの予約の読み取り形（getUpcomingCareVisits の戻り）。
+ * 時間とお店は行の3行目に「14:00 ・ ◯◯サロン」と出す。無ければ null。
+ */
+export interface TrimmingReservation {
+  date: DateStr;
+  /** "HH:MM"。未設定なら null */
+  time: string | null;
+  place: string | null;
+}
+
 // --------------------------------------------------------------- 出力の形
 
 export interface UrgentItem {
@@ -145,7 +161,7 @@ export interface ScheduleRow {
   relative: string | null;
   /** 日付の代わりに出す1文（unset の1行 / 「そろそろの時期です」） */
   fallback: string | null;
-  /** 3行目（薬名 / ワクチン名 / 目安の根拠 / 「前回 …」） */
+  /** 3行目（薬名 / ワクチン名 / 目安の根拠 / 「前回 …」/ 予約の時間とお店） */
   detail: string | null;
 }
 
@@ -154,8 +170,17 @@ export interface HomeScheduleInput {
   doses: readonly HeartwormDoseRow[];
   /** getVaccinationSchedule() の戻り */
   vaccineSchedule: readonly VaccinationRecord[];
-  /** getRecentCareDates("trimming", 4) の戻り */
+  /**
+   * getRecentCareDates("trimming", today) の戻り = **今日より前**の直近4件。
+   * 周期の推定にだけ使う。今日より先の日付が混ざっていてもここで落とす
+   * （予約を「前回」に数えると間隔の中央値がでたらめになる）
+   */
   trimmingDates: readonly DateStr[];
+  /**
+   * getUpcomingCareVisits("trimming", today) の戻り = **今日以降**の予約。
+   * 1件でもあれば目安ではなく本物の予定として行に出す。
+   */
+  trimmingReservations: readonly TrimmingReservation[];
 }
 
 export interface HomeSchedule {
@@ -333,7 +358,7 @@ export function buildHomeSchedule(
     rows: [
       heartwormRow(pending, today, spoken.has("heartworm")),
       vaccinationRow(dues, today, spoken.has("vaccination")),
-      trimmingRow(input.trimmingDates, today),
+      trimmingRow(input.trimmingDates, input.trimmingReservations, today),
     ],
   };
 }
@@ -468,11 +493,38 @@ function vaccinationRow(
   };
 }
 
+/**
+ * トリミングの行。**予約があればそれが答え**（目安を出さない）。
+ *
+ * 予約が無いときだけ、過去の間隔から目安を出す。予約は今日以降の日付
+ * （今日の予約は「今日」と言う — 行ったかどうかを知る列が無いので、
+ * カレンダーの印と同じく今日より先だけが未来だが、行は「次はいつか」を
+ * 答える場所なので当日ぶんも持つ）。過ぎた予約は行ったものとみなし、
+ * trimmingDates 側（前回）として扱う。
+ */
 function trimmingRow(
   trimmingDates: readonly DateStr[],
+  reservations: readonly TrimmingReservation[],
   today: DateStr,
 ): ScheduleRow {
-  const dates = sortDatesDesc(trimmingDates);
+  const upcoming = reservations
+    .filter((r) => isDateOnly(r.date) && r.date >= today)
+    .sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : (a.time ?? "~").localeCompare(b.time ?? "~"),
+    );
+  const next = upcoming[0];
+  if (next) {
+    return {
+      ...baseRow("trimming", "due"),
+      date: next.date,
+      relative: relativeDayLabel(next.date, today),
+      // 「14:00 ・ ◯◯サロン」。どちらも無ければ3行目そのものを出さない
+      detail: joinDetail(next.time, next.place) || null,
+    };
+  }
+
+  // 予約を「前回」に数えない。今日より先の日付が来ても周期の材料にしない
+  const dates = sortDatesDesc(trimmingDates.filter((d) => d <= today));
   if (dates.length === 0) return unsetRow("trimming");
 
   const est = estimateNextTrimming(dates);

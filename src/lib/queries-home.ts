@@ -32,6 +32,7 @@ import {
   getHeartwormDoses,
   getHeartwormMedicines,
   getRecentCareDates,
+  getUpcomingCareVisits,
 } from "@/lib/queries-care";
 import {
   getRecentMealDays,
@@ -50,9 +51,9 @@ import { shortLabel } from "@/lib/short-name";
  * ブロックごとに増えるため。コンポーネントは受け取ったものを描くだけ、
  * 判定は純関数（src/lib/home.ts / src/lib/profile.ts）、往復はここ。
  *
- * クエリは9文（プロフィール1・ごはん2・フィラリア1・薬1・ワクチン1・
- * トリミング1・集計1・同期1）。加えて layout.tsx が認証済みリクエストごとに
- * 4文走らせるので、着地1回で計13文。Turso は1文ごとに往復が乗るので、
+ * クエリは10文（プロフィール1・ごはん2・フィラリア1・薬1・ワクチン1・
+ * トリミング2（前回の日付・予約）・集計1・同期1）。加えて layout.tsx が
+ * 認証済みリクエストごとに4文走らせるので、着地1回で計14文。Turso は1文ごとに往復が乗るので、
  * 遅ければ次の手は (a) layout の getCatalogState を1文にまとめる、
  * (b) ヒーロー以外を <Suspense> で分割、の順。**Suspense 分割は最初から
  * やらない** — 境界4つのスケルトンのちらつきのほうが高くつく。
@@ -202,19 +203,31 @@ function toDraft(date: DateStr, meals: DayMeals | null): DayDraft {
 export async function getHomeSnapshot(): Promise<HomeSnapshot> {
   const today = todayJst(nowJstIso());
 
-  const [profile, mealDays, doses, medicines, vaccineSchedule, trimmingDates, stats, lastSync] =
-    await Promise.all([
-      getDogProfile(),
-      getRecentMealDays(MEAL_DAYS),
-      getHeartwormDoses(),
-      // HeartwormRecordDialog の必須 prop。バンドに「飲ませた」を埋めるので
-      // 予定が無い日でも引く（1文・高々十数行）
-      getHeartwormMedicines(),
-      getVaccinationSchedule(),
-      getRecentCareDates("trimming", MEAL_DAYS),
-      getStats(),
-      getLastSync(),
-    ]);
+  const [
+    profile,
+    mealDays,
+    doses,
+    medicines,
+    vaccineSchedule,
+    trimmingDates,
+    trimmingReservations,
+    stats,
+    lastSync,
+  ] = await Promise.all([
+    getDogProfile(),
+    getRecentMealDays(MEAL_DAYS),
+    getHeartwormDoses(),
+    // HeartwormRecordDialog の必須 prop。バンドに「飲ませた」を埋めるので
+    // 予定が無い日でも引く（1文・高々十数行）
+    getHeartwormMedicines(),
+    getVaccinationSchedule(),
+    // 前回（今日より前）と予約（今日以降）は別の問い。予約を「前回」に
+    // 混ぜると周期の推定が壊れるので、2文に分けて引く
+    getRecentCareDates("trimming", today),
+    getUpcomingCareVisits("trimming", today),
+    getStats(),
+    getLastSync(),
+  ]);
 
   // 1本のクエリの戻りを3つの用途に分ける（「前回」の真実を1つにする）
   const todayMeals = mealDays[0]?.date === today ? mealDays[0] : null;
@@ -222,7 +235,7 @@ export async function getHomeSnapshot(): Promise<HomeSnapshot> {
   const previousDate = pastDays[0]?.date ?? null;
 
   const { urgent, rows } = buildHomeSchedule(
-    { doses, vaccineSchedule, trimmingDates },
+    { doses, vaccineSchedule, trimmingDates, trimmingReservations },
     today,
   );
 

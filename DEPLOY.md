@@ -139,6 +139,37 @@ npm run db:push:log
 SQLite は既定値の無い `NOT NULL` 列を後から `ALTER` で足せないため、
 スクリプトの `syncColumns` は「要手動」と出して飛ばします。
 
+**既存の列の `NOT NULL` を外す変更は、テーブルの作り直しで届けます。**
+SQLite は `ALTER` で列の制約を変えられないので、スクリプトの
+`rebuildIfLoosened` が「新しい定義で `__new` を作る → 行を写す → 古いのを
+消す → 改名 → インデックスを作り直す」を1つのトランザクションで行い、
+前後の行数を出します。他のテーブルから外部キーで参照されている（＝親の）
+テーブルは自動では触らず「要手動」と出します（親を `DROP` すると子の行が
+連鎖削除されるため）。
+
+**順番は「スキーマを先、コードの push を後」。** 列の追加・NOT NULL 外し・
+新テーブルは旧コードでも動くので、先に届けても何も壊れません。逆にコードを
+先に出すと、`npm run db:push:log` を走らせるまでホームと `/care` が
+`no such column` / `no such table` で開けません（ホームは新しい列を読むので
+サイトの入口ごと落ちます）。
+
+> 2026-09-04 のトリミングの予約対応がこの例です（この順で実施済み）:
+> `care_visit_items.amount_yen` が「金額未確定」を表すために nullable になり、
+> `care_visits` に `time` / `place_id` 列、`care_places` / `care_courses`
+> テーブルが増えました。出力には
+> `作り直し: care_visit_items（NOT NULL を外した列: amount_yen）5行 → 5行`、
+> `列を追加: care_visits.time` / `care_visits.place_id`、
+> `作成/確認: table care_places` / `care_courses` が並びました。
+
+**手順2の `npm run db:push`（drizzle-kit）はこのDBでは失敗することがあります。**
+2026-09-04 には全テーブルを作り直す差分を出し、列を足しつつ作り直す
+テーブルで `no such column` になって止まりました（トランザクションなので
+何も書かれずに戻ります）。そのときは `--verbose` の出力から必要な
+`CREATE TABLE` / `ALTER TABLE` だけを取り、`sqlite3 data/app.db` で1つの
+トランザクションとして当ててください（作り直しは `__new_…` を作って
+INSERT … SELECT → DROP → RENAME → インデックス再作成）。手順4はローカルの
+`sqlite_master` を読むので、ローカルさえ正しければ本番には同じ形で届きます。
+
 ## 写真の保存先（Vercel Blob）
 
 写真を使うには Blob ストアが必要です（未設定でも文字の記録は全部使えます。

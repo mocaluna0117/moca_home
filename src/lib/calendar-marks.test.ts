@@ -10,6 +10,8 @@ import {
 
 /** 描く月は 2026年8月に固定（monthRange の戻りをそのまま使う） */
 const RANGE = monthRange("2026-08")!;
+/** 「今日」。トリミング・通院の date がこれより先なら予定 */
+const TODAY = "2026-08-20";
 
 let seq = 0;
 
@@ -41,6 +43,7 @@ const build = (src: Partial<MarkSources> = {}) =>
     doses: [],
     vaccinationSchedule: [],
     range: RANGE,
+    today: TODAY,
     ...src,
   });
 
@@ -138,6 +141,57 @@ describe("buildCalendarMarks — 予定の印", () => {
       vaccinationSchedule: [vac("2026-08-15", "6種混合", null)],
     });
     assert.equal(marks.size, 0);
+  });
+});
+
+describe("buildCalendarMarks — トリミング・通院の予約（今日より先の date）", () => {
+  it("今日より先の日付は「〜の予定」の印になる（破線側）", () => {
+    const marks = build({
+      careDates: careMap([
+        ["2026-08-25", ["trimming"]],
+        ["2026-08-26", ["hospital"]],
+      ]),
+    });
+    const trimming = on(marks, "2026-08-25")[0];
+    assert.equal(trimming.kind, "trimming");
+    assert.equal(trimming.state, "planned");
+    assert.equal(trimming.label, "トリミングの予定");
+    assert.equal(trimming.icon, "scissors");
+    assert.equal(trimming.href, "/care");
+    assert.equal(trimming.detail, null);
+
+    const hospital = on(marks, "2026-08-26")[0];
+    assert.equal(hospital.state, "planned");
+    assert.equal(hospital.label, "通院の予定");
+    assert.equal(hospital.href, "/care?tab=hospital");
+  });
+
+  it("今日の予約は記録の印（その日のうちに付け替える列が無い）", () => {
+    const marks = build({ careDates: careMap([[TODAY, ["trimming"]]]) });
+    assert.deepEqual(shapes(on(marks, TODAY)), ["trimming:done"]);
+    assert.equal(on(marks, TODAY)[0].label, "トリミング");
+  });
+
+  it("過ぎた予約は行ったものとみなす（「過ぎています」は言わない）", () => {
+    const marks = build({ careDates: careMap([["2026-08-19", ["trimming"]]]) });
+    assert.deepEqual(shapes(on(marks, "2026-08-19")), ["trimming:done"]);
+  });
+
+  it("同じ日の記録と予定で key が重ならない", () => {
+    const marks = build({
+      careDates: careMap([
+        ["2026-08-25", ["trimming", "hospital"]],
+        ["2026-08-05", ["trimming", "hospital"]],
+      ]),
+    });
+    for (const date of ["2026-08-25", "2026-08-05"]) {
+      const day = on(marks, date);
+      assert.equal(new Set(day.map((m) => m.key)).size, day.length);
+    }
+    assert.deepEqual(shapes(on(marks, "2026-08-25")), [
+      "trimming:planned",
+      "hospital:planned",
+    ]);
   });
 });
 

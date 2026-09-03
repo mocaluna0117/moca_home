@@ -3,7 +3,14 @@
  *
  * DB も React も import しない（calendar.ts / home.ts と同じ立ち位置で、
  * tsx --test で単体実行できる）。日付はすべて DATE ONLY の 'YYYY-MM-DD' で、
- * どの月を描くかは range として呼び出し側から渡す（ここで「今日」を見ない）。
+ * どの月を描くかは range として呼び出し側から渡す。
+ *
+ * **「今日」も呼び出し側から渡す。** トリミング・通院の記録は「予約した日」
+ * なので未来の日付を持てるが、行った／まだの列は無い（schema.ts の
+ * care_visits を参照）。予定か記録かは **date が今日より先か** だけで決まる
+ * ので、この関数がそれを判定するには今日が要る。判定は1箇所（下の
+ * careState）にしかなく、ホーム（home.ts の trimmingRow）も同じ「今日より
+ * 先なら予約」で線を引く。
  *
  * **クエリを増やさない**: 日付を持つ記録はすでに care / log のクエリが引いて
  * いる。カレンダー用にもう1本引くと「その日に何があったか」の答えが2箇所に
@@ -58,6 +65,8 @@ export interface MarkSources {
   }[];
   /** monthRange(ym) の戻り。この範囲の外は捨てる */
   range: { start: DateStr; endExclusive: DateStr };
+  /** todayJst() の戻り。トリミング・通院の date がこれより先なら「予定」 */
+  today: DateStr;
 }
 
 interface MarkSpec {
@@ -68,12 +77,7 @@ interface MarkSpec {
   href: string;
 }
 
-/**
- * 存在しうる印の組み合わせ。**トリミングと通院に予定は無い** —
- * care_visits に次回予定日の列が無いので、planned を足すと DB のどこにも
- * 無い予定を描くことになる（型でそれを禁じておく）。
- */
-type SpecKey = `${CareKind}:done` | `heartworm:${MarkState}` | `vaccination:${MarkState}`;
+type SpecKey = `${MarkKind}:${MarkState}`;
 
 /**
  * 印の見え方と行き先。ラベルは**種類だけ**で薬名やワクチン名を含めない
@@ -87,10 +91,24 @@ const MARK_SPEC: Record<SpecKey, MarkSpec> = {
     icon: "scissors",
     href: "/care",
   },
+  "trimming:planned": {
+    kind: "trimming",
+    state: "planned",
+    label: "トリミングの予定",
+    icon: "scissors",
+    href: "/care",
+  },
   "hospital:done": {
     kind: "hospital",
     state: "done",
     label: "通院",
+    icon: "stethoscope",
+    href: "/care?tab=hospital",
+  },
+  "hospital:planned": {
+    kind: "hospital",
+    state: "planned",
+    label: "通院の予定",
     icon: "stethoscope",
     href: "/care?tab=hospital",
   },
@@ -140,6 +158,15 @@ const detailOf = (raw: string | null | undefined): string | null => {
 };
 
 /**
+ * トリミング・通院の記録が予定か記録か。**今日より先だけが予定**。
+ * 今日の予約は「今日のトリミング」で、行ったかどうかを知る列が無い以上
+ * その日のうちに印を付け替えることはできない。今日を記録側に置くのは、
+ * 過ぎた予約を行ったものとみなす規則（schema.ts）と同じ線を引くため。
+ */
+export const careState = (date: DateStr, today: DateStr): MarkState =>
+  date > today ? "planned" : "done";
+
+/**
  * 1日あたりの印を組み立てる。**順序は固定**（マスの中で印が入れ替わらないため）:
  * 記録が先、予定が後。それぞれの中では trimming → hospital → heartworm → vaccination。
  */
@@ -172,12 +199,14 @@ export function buildCalendarMarks(src: MarkSources): Map<DateStr, CalendarMark[
 
   // トリミング・通院。CARE_KINDS の順に見るので、Map に入っていた kind の
   // 並び（SQL の行順）で印が入れ替わることがない。1日1種類1個で足りる
-  // （同じ日に2回トリミングしても、飼い主が見たいのは「行った日」）
+  // （同じ日に2回トリミングしても、飼い主が見たいのは「その日」）。
+  // 今日より先の日付は予約なので「予定」の印（破線）になる
   for (const [date, kinds] of src.careDates) {
     if (!inRange(date)) continue;
+    const state = careState(date, src.today);
     for (const kind of CARE_KINDS) {
       if (!kinds.includes(kind)) continue;
-      push(date, MARK_SPEC[`${kind}:done`], `${kind}-done`, null);
+      push(date, MARK_SPEC[`${kind}:${state}`], `${kind}-${state}`, null);
     }
   }
 

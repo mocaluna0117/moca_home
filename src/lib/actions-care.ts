@@ -5,9 +5,20 @@ import { revalidatePath } from "next/cache";
 
 import { actionError } from "@/lib/action-error";
 import { db } from "@/lib/db";
-import { careVisitItems, careVisits, heartwormDoses, medicines } from "@/lib/db/schema";
 import {
+  careCourses,
+  carePlaces,
+  careVisitItems,
+  careVisits,
+  heartwormDoses,
+  medicines,
+} from "@/lib/db/schema";
+import {
+  MAX_COURSE_NAME,
+  MAX_PLACE_NAME,
   careItemsErrorMessage,
+  isTimeOfDay,
+  parseYen,
   validateCareItems,
   type CareItemDraft,
 } from "@/lib/care";
@@ -18,8 +29,10 @@ import { nowJstIso } from "@/lib/format";
 type ActionResult = { ok: true } | { ok: false; error: string };
 
 const now = nowJstIso;
-const MAX_PLACE = 100;
 const MAX_NOTE = 500;
+
+/** 「お店」「動物病院」。エラー文と重複チェックの文言に使う */
+const PLACE_NOUN: Record<CareKind, string> = { trimming: "お店", hospital: "動物病院" };
 
 function revalidateCare(): void {
   revalidatePath("/care");
@@ -32,7 +45,13 @@ function revalidateCare(): void {
 export interface CareVisitInput {
   id?: number;
   kind: CareKind;
+  /** トリミングは予約した日、通院は行った日。未来でもよい */
   date: string;
+  /** "HH:MM"。空なら null */
+  time: string | null;
+  /** 登録したお店を選んだとき。名前は登録側から引く（place は見ない） */
+  placeId: number | null;
+  /** 自由入力の店名。placeId があるときは無視する */
   place: string | null;
   note: string | null;
   items: CareItemDraft[];
@@ -41,6 +60,9 @@ export interface CareVisitInput {
 /**
  * 来店記録の保存。明細は毎回まるごと入れ替える（diff を取らない）。
  * 高々数十行なので、順序や欠番を気にするより単純さを取る。
+ *
+ * 日付が未来でもよい（トリミングは予約の記録）。金額は空欄でもよい
+ * （validateCareItems が null にして通す）。明細が0行でもよい。
  */
 export async function saveCareVisit(
   input: CareVisitInput,
@@ -49,10 +71,33 @@ export async function saveCareVisit(
     if (!isCareKind(input.kind)) return { ok: false, error: "種類が不正です" };
     if (!isDateOnly(input.date)) return { ok: false, error: "日付の形式が正しくありません" };
 
+    // <input type="time"> は "HH:MM"。秒付きで来ても先頭5文字を見る
+    const time = input.time?.trim() ? input.time.trim().slice(0, 5) : null;
+    if (time !== null && !isTimeOfDay(time)) {
+      return { ok: false, error: "時間の形式が正しくありません" };
+    }
+
     const checked = validateCareItems(input.items);
     if (!checked.ok) return { ok: false, error: careItemsErrorMessage(checked.error) };
 
-    const place = input.place?.trim() ? input.place.trim().slice(0, MAX_PLACE) : null;
+    // お店は登録から引く（画面から来た文字列は信用しない）。種類も一致させる —
+    // 通院の記録にトリミングのお店の id が来ても通さない
+    let placeId: number | null = null;
+    let place: string | null = null;
+    if (input.placeId !== null && input.placeId !== undefined) {
+      const registered = await db
+        .select({ id: carePlaces.id, name: carePlaces.name })
+        .from(carePlaces)
+        .where(and(eq(carePlaces.id, input.placeId), eq(carePlaces.kind, input.kind)))
+        .get();
+      if (!registered) {
+        return { ok: false, error: `選んだ${PLACE_NOUN[input.kind]}が見つかりません` };
+      }
+      placeId = registered.id;
+      place = registered.name;
+    } else {
+      place = input.place?.trim() ? input.place.trim().slice(0, MAX_PLACE_NAME) : null;
+    }
     const note = input.note?.trim() ? input.note.trim().slice(0, MAX_NOTE) : null;
 
     let visitId: number;
@@ -65,7 +110,15 @@ export async function saveCareVisit(
       if (!existing) return { ok: false, error: "記録が見つかりません" };
       await db
         .update(careVisits)
-        .set({ kind: input.kind, date: input.date, place, note, updatedAt: now() })
+        .set({
+          kind: input.kind,
+          date: input.date,
+          time,
+          placeId,
+          place,
+          note,
+          updatedAt: now(),
+        })
         .where(eq(careVisits.id, input.id))
         .run();
       await db.delete(careVisitItems).where(eq(careVisitItems.visitId, input.id)).run();
@@ -76,6 +129,8 @@ export async function saveCareVisit(
         .values({
           kind: input.kind,
           date: input.date,
+          time,
+          placeId,
           place,
           note,
           createdAt: now(),
@@ -116,6 +171,177 @@ export async function deleteCareVisit(id: number): Promise<ActionResult> {
     };
   }
 }
+
+// ------------------------------------------------------------ お店・病院
+
+export interface CarePlaceInput {
+  id?: number;
+  kind: CareKind;
+  name: string;
+}
+
+/**
+ * お店・病院の登録・更新。名前は種類の中で一意なので、同じ名前を2回登録
+ * しても増えない。名前を直すと、その店を選んである記録の写し（place）も
+ * 一緒に直す（薬と同じ作法）。
+ */
+export async function saveCarePlace(
+  input: CarePlaceInput,
+): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
+  try {
+    if (!isCareKind(input.kind)) return { ok: false, error: "種類が不正です" };
+    const noun = PLACE_NOUN[input.kind];
+    const name = input.name.trim();
+    if (name === "") return { ok: false, error: `${noun}の名前を入力してください` };
+    if (name.length > MAX_PLACE_NAME) {
+      return { ok: false, error: `${noun}の名前は${MAX_PLACE_NAME}文字以内で入力してください` };
+    }
+
+    const duplicate = await db
+      .select({ id: carePlaces.id })
+      .from(carePlaces)
+      .where(and(eq(carePlaces.kind, input.kind), eq(carePlaces.name, name)))
+      .get();
+    if (duplicate && duplicate.id !== input.id) {
+      return { ok: false, error: `同じ名前の${noun}がすでに登録されています` };
+    }
+
+    if (input.id !== undefined) {
+      const existing = await db
+        .select({ id: carePlaces.id })
+        .from(carePlaces)
+        .where(and(eq(carePlaces.id, input.id), eq(carePlaces.kind, input.kind)))
+        .get();
+      if (!existing) return { ok: false, error: `${noun}が見つかりません` };
+      await db
+        .update(carePlaces)
+        .set({ name, updatedAt: now() })
+        .where(eq(carePlaces.id, input.id))
+        .run();
+      // 写しも合わせて直す。登録を消したあとも読める名前を最新に保つため
+      await db
+        .update(careVisits)
+        .set({ place: name, updatedAt: now() })
+        .where(eq(careVisits.placeId, input.id))
+        .run();
+      revalidateCare();
+      return { ok: true, id: input.id };
+    }
+
+    const created = await db
+      .insert(carePlaces)
+      .values({ kind: input.kind, name, createdAt: now(), updatedAt: now() })
+      .returning({ id: carePlaces.id })
+      .get();
+    revalidateCare();
+    return { ok: true, id: created.id };
+  } catch (err) {
+    return { ok: false, error: actionError(err, "保存に失敗しました") };
+  }
+}
+
+/**
+ * お店・病院の登録を消す。**記録は消えない。** 記録側の place_id を先に外し、
+ * 名前の写し（place）を残すので、過去にどこへ行ったかは読める。
+ * DB の外部キーに任せない理由は deleteMedicine と同じ（schema.ts のコメント参照）。
+ */
+export async function deleteCarePlace(id: number): Promise<ActionResult> {
+  try {
+    await db
+      .update(careVisits)
+      .set({ placeId: null, updatedAt: now() })
+      .where(eq(careVisits.placeId, id))
+      .run();
+    await db.delete(carePlaces).where(eq(carePlaces.id, id)).run();
+    revalidateCare();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: actionError(err, "削除に失敗しました") };
+  }
+}
+
+// ------------------------------------------------------------------ コース
+
+export interface CareCourseInput {
+  id?: number;
+  kind: CareKind;
+  name: string;
+  /** 画面から来る生の文字列。空なら金額未設定 */
+  price: string;
+}
+
+/**
+ * コースの登録・更新。名前は種類の中で一意。
+ * 明細はコースを参照しない（名前と金額を写すだけ）ので、ここで名前や金額を
+ * 直しても過去の記録は変わらない。
+ */
+export async function saveCareCourse(
+  input: CareCourseInput,
+): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
+  try {
+    if (!isCareKind(input.kind)) return { ok: false, error: "種類が不正です" };
+    const name = input.name.trim();
+    if (name === "") return { ok: false, error: "コースの名前を入力してください" };
+    if (name.length > MAX_COURSE_NAME) {
+      return { ok: false, error: `コースの名前は${MAX_COURSE_NAME}文字以内で入力してください` };
+    }
+    let priceYen: number | null = null;
+    if (input.price.trim() !== "") {
+      priceYen = parseYen(input.price);
+      if (priceYen === null) {
+        return { ok: false, error: "金額を数字で入力するか、空欄にしてください" };
+      }
+    }
+
+    const duplicate = await db
+      .select({ id: careCourses.id })
+      .from(careCourses)
+      .where(and(eq(careCourses.kind, input.kind), eq(careCourses.name, name)))
+      .get();
+    if (duplicate && duplicate.id !== input.id) {
+      return { ok: false, error: "同じ名前のコースがすでに登録されています" };
+    }
+
+    if (input.id !== undefined) {
+      const existing = await db
+        .select({ id: careCourses.id })
+        .from(careCourses)
+        .where(and(eq(careCourses.id, input.id), eq(careCourses.kind, input.kind)))
+        .get();
+      if (!existing) return { ok: false, error: "コースが見つかりません" };
+      await db
+        .update(careCourses)
+        .set({ name, priceYen, updatedAt: now() })
+        .where(eq(careCourses.id, input.id))
+        .run();
+      revalidateCare();
+      return { ok: true, id: input.id };
+    }
+
+    const created = await db
+      .insert(careCourses)
+      .values({ kind: input.kind, name, priceYen, createdAt: now(), updatedAt: now() })
+      .returning({ id: careCourses.id })
+      .get();
+    revalidateCare();
+    return { ok: true, id: created.id };
+  } catch (err) {
+    return { ok: false, error: actionError(err, "保存に失敗しました") };
+  }
+}
+
+/** コースを消す。明細は名前と金額の写しを持つので、記録は変わらない。 */
+export async function deleteCareCourse(id: number): Promise<ActionResult> {
+  try {
+    await db.delete(careCourses).where(eq(careCourses.id, id)).run();
+    revalidateCare();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: actionError(err, "削除に失敗しました") };
+  }
+}
+
+// ---------------------------------------------------------------------- 薬
 
 const MAX_MEDICINE_NAME = 100;
 

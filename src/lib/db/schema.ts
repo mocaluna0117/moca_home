@@ -356,6 +356,12 @@ export const vaccinationPhotos = sqliteTable(
  * 種類の値（CareKind）は src/lib/calendar.ts にある。クライアントが
  * ラベルを import するときに drizzle を引き込まないため。
  *
+ * **トリミングは「行った日」ではなく「予約した日」を入れる。** 予約は先に
+ * 決まり、金額はあとで確定するので、date は未来でもよい。done/planned の
+ * 列は持たない — 予約した日が来れば行ったものとみなし、**今日より先の date
+ * を「予定」として描く**（src/lib/calendar-marks.ts / home.ts）。「行ったか」
+ * を別の列に持つと、その日が来るたびに印を付け直す仕事が飼い主に増える。
+ *
  * **合計金額の列は持たない。** 明細も合計も同じ人が同じダイアログで入れる
  * ので、列にすると真実が2つできて黙って食い違う。合計は常に
  * sum(care_visit_items.amount_yen)。割引は負の金額の明細行で表す。
@@ -368,9 +374,30 @@ export const careVisits = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     /** "trimming" | "hospital" */
     kind: text("kind").notNull(),
-    /** 行った日, DATE ONLY */
+    /** トリミングは予約した日、通院は行った日, DATE ONLY */
     date: text("date").notNull(),
-    /** 店名・病院名（任意）。施設名であって個人名は入れない */
+    /**
+     * 予約の時間 "HH:MM"（24時間・任意）。date と同じく **+09:00 を持たない
+     * 裸の文字列**で、暦日と組み合わせて瞬間にはしない（変換を一度も通さない
+     * ことで1日ずれる事故を構造的に防ぐ、date と同じ理由）。
+     */
+    time: text("time"),
+    /**
+     * 登録したお店・病院（care_places）。名前の写し（place）を別に持つのは、
+     * 登録を消したあとも「どこへ行ったか」が読めるようにするため
+     * （heartworm_doses の medicine_id / label と同じ作法）。
+     *
+     * **DB側の外部キーは当てにしない。** この列は既存テーブルへの
+     * ALTER TABLE ADD COLUMN で足されるが、SQLite のこの経路では
+     * REFERENCES 句が落ちる。そのため deleteCarePlace() が明示的に
+     * この列を null に戻す。
+     */
+    placeId: integer("place_id"),
+    /**
+     * 店名・病院名（任意）。施設名であって個人名は入れない。
+     * place_id があるときは登録側の名前を写す（名前を直せば saveCarePlace が
+     * ここも直す）。無いときは自由入力そのもの。
+     */
     place: text("place"),
     note: text("note"),
     createdAt: text("created_at").notNull(),
@@ -385,8 +412,17 @@ export const careVisits = sqliteTable(
 /**
  * 明細の1行。orders / order_items と同じ親子命名。親が消えたら一緒に消す。
  *
- * 金額は notNull。null を許すと sum() が黙って過少申告し、「0円」と
- * 「金額が分からない」を区別できなくなる。数量は名前に書く（"内服薬 7日分"）。
+ * 金額は **nullable**。トリミングは予約の時点で記録するので、コースは
+ * 決まっていても金額がまだ確定していないことが普通にある（当日の追加料金・
+ * 割引）。null は「金額が分からない」で、0 は「0円」— 混ぜない。
+ * sum() が null を黙って落として過少申告する問題は、集計側が
+ * 「金額未確定の件数」を必ず一緒に返すことで見えるようにしている
+ * （src/lib/care.ts の summarizeAmounts / getCareYearTotals の pending）。
+ * 数量は名前に書く（"内服薬 7日分"）。
+ *
+ * コース（care_courses）への参照は**持たない**。明細は「その時いくら払ったか」
+ * の写しで、コースの値上げや改名に追随してはいけないから
+ * （order_items が product_name / unit_price_yen を写しで持つのと同じ）。
  */
 export const careVisitItems = sqliteTable(
   "care_visit_items",
@@ -399,10 +435,64 @@ export const careVisitItems = sqliteTable(
     seq: integer("seq").notNull().default(0),
     /** 例 "シャンプーコース" "混合ワクチン" "内服薬 7日分" "割引" */
     name: text("name").notNull(),
-    /** 税込・円。割引は負の値 */
-    amountYen: integer("amount_yen").notNull(),
+    /** 税込・円。割引は負の値。null = まだ確定していない */
+    amountYen: integer("amount_yen"),
   },
   (t) => [index("care_visit_items_visit_id_idx").on(t.visitId)],
+);
+
+/**
+ * いつも行くお店・病院の登録。トリミング／通院の記録で行き先を選ぶ候補。
+ *
+ * kind で「トリミングのお店」と「通院の病院」を分ける（care_visits と同じ
+ * 値）。記録のダイアログは自分の kind の候補だけを出す。
+ *
+ * 名前は kind の中で一意。同じ店を2回登録しても増えないようにするためで、
+ * 名前を直せば、その店を選んである過去の記録の表示も一緒に直る
+ * （記録側は place_id で参照しつつ place にも写しを持つ。medicines と同じ）。
+ *
+ * PII: 住所・電話・URL の列は作らない（dog_profile と同じ方針 — この DB は
+ * Turso に出る）。持つのは施設名だけ。
+ */
+export const carePlaces = sqliteTable(
+  "care_places",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** "trimming" | "hospital" */
+    kind: text("kind").notNull(),
+    name: text("name").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  // 名前付きのユニークインデックスにする理由は heartworm_doses のコメント参照
+  (t) => [uniqueIndex("care_places_kind_name_idx").on(t.kind, t.name)],
+);
+
+/**
+ * トリミングのコースの登録（名前と金額）。記録の明細に1タップで入れる型紙。
+ *
+ * kind を持つのは care_places と揃えるため（通院の「診察料」のような定番
+ * 項目を将来ここに入れられる形）。今の画面が出すのは trimming だけ。
+ *
+ * 金額は nullable。コースはあっても値段が変わる・分からない場合があり、
+ * 明細側が空欄を許す（care_visit_items.amount_yen）のと同じ扱いにする。
+ *
+ * 明細はこのテーブルを**参照しない**（名前と金額を写すだけ）。値上げしても
+ * 過去の記録の金額が変わらないため。コースを消しても記録は変わらない。
+ */
+export const careCourses = sqliteTable(
+  "care_courses",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** "trimming" | "hospital" */
+    kind: text("kind").notNull(),
+    name: text("name").notNull(),
+    /** 税込・円。null = 金額未設定 */
+    priceYen: integer("price_yen"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("care_courses_kind_name_idx").on(t.kind, t.name)],
 );
 
 /**
@@ -495,6 +585,8 @@ export const heartwormDoses = sqliteTable(
 export type Medicine = typeof medicines.$inferSelect;
 export type CareVisit = typeof careVisits.$inferSelect;
 export type CareVisitItem = typeof careVisitItems.$inferSelect;
+export type CarePlace = typeof carePlaces.$inferSelect;
+export type CareCourse = typeof careCourses.$inferSelect;
 export type HeartwormDose = typeof heartwormDoses.$inferSelect;
 
 export type MealEntry = typeof mealEntries.$inferSelect;

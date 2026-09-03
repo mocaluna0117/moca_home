@@ -161,13 +161,15 @@ async function LogTab({
       getVaccinationSchedule(),
     ]);
 
-  // どの日に何の印を出すかは buildCalendarMarks が決めきる（表示側は並べるだけ）
+  // どの日に何の印を出すかは buildCalendarMarks が決めきる（表示側は並べるだけ）。
+  // today を渡すのは、トリミング・通院の今日より先の日付（予約）を予定の印にするため
   const marks = buildCalendarMarks({
     careDates,
     vaccinationDates,
     doses,
     vaccinationSchedule,
     range,
+    today,
   });
 
   const byDate = new Map(month.map((d) => [d.date, d]));

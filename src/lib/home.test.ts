@@ -45,7 +45,7 @@ const build = (
   today: DateStr = TODAY,
 ) =>
   buildHomeSchedule(
-    { doses: [], vaccineSchedule: [], trimmingDates: [], ...input },
+    { doses: [], vaccineSchedule: [], trimmingDates: [], trimmingReservations: [], ...input },
     today,
   );
 
@@ -494,5 +494,84 @@ describe("buildHomeSchedule — トリミングの行", () => {
   it("トリミングはバンドに出ない", () => {
     const { urgent } = build({ trimmingDates: ["2026-05-01", "2026-04-01", "2026-03-02", "2026-01-31"] });
     assert.deepEqual(urgent, []);
+  });
+
+  it("今日より先の日付が「前回」に混ざっても周期の材料にしない", () => {
+    // 4件そろっているように見えるが、先頭は予約（未来）。3件の観測として扱う
+    const { rows } = build({
+      trimmingDates: ["2026-09-20", "2026-08-01", "2026-07-02", "2026-05-03"],
+    });
+    const row = rowOf(rows, "trimming");
+    assert.equal(row.state, "observed");
+    assert.equal(row.detail, "前回 8月1日（30日前）");
+  });
+});
+
+describe("buildHomeSchedule — トリミングの予約", () => {
+  it("予約があれば目安ではなく本物の予定として出す（時間とお店を3行目に）", () => {
+    const { urgent, rows } = build({
+      trimmingDates: ["2026-08-01", "2026-07-02", "2026-05-03", "2026-03-19"],
+      trimmingReservations: [{ date: "2026-09-10", time: "14:00", place: "サロン◯◯" }],
+    });
+    assert.deepEqual(urgent, []);
+    const row = rowOf(rows, "trimming");
+    assert.equal(row.state, "due");
+    assert.equal(row.date, "2026-09-10");
+    assert.equal(row.relative, "あと10日");
+    assert.equal(row.fallback, null);
+    assert.equal(row.detail, "14:00 ・ サロン◯◯");
+    assert.equal(row.href, "/care");
+  });
+
+  it("時間もお店も無い予約は3行目を出さない（「 ・ 」を浮かせない）", () => {
+    const { rows } = build({
+      trimmingReservations: [{ date: "2026-09-10", time: null, place: null }],
+    });
+    const row = rowOf(rows, "trimming");
+    assert.equal(row.state, "due");
+    assert.equal(row.detail, null);
+
+    const onlyPlace = build({
+      trimmingReservations: [{ date: "2026-09-10", time: null, place: "サロン◯◯" }],
+    });
+    assert.equal(rowOf(onlyPlace.rows, "trimming").detail, "サロン◯◯");
+  });
+
+  it("今日の予約は「今日」（行は当日ぶんも持つ。バンドには出ない）", () => {
+    const { urgent, rows } = build({
+      trimmingReservations: [{ date: TODAY, time: "10:30", place: null }],
+    });
+    assert.deepEqual(urgent, []);
+    const row = rowOf(rows, "trimming");
+    assert.equal(row.date, TODAY);
+    assert.equal(row.relative, "今日");
+    assert.equal(row.detail, "10:30");
+  });
+
+  it("複数あれば近いほう。同じ日なら早い時間", () => {
+    const { rows } = build({
+      trimmingReservations: [
+        { date: "2026-10-01", time: null, place: "来月" },
+        { date: "2026-09-10", time: "15:00", place: "午後" },
+        { date: "2026-09-10", time: "09:00", place: "午前" },
+      ],
+    });
+    assert.equal(rowOf(rows, "trimming").detail, "09:00 ・ 午前");
+  });
+
+  it("過ぎた予約は無視する（行ったものとみなす。「すぎています」を言わない）", () => {
+    const { rows } = build({
+      trimmingReservations: [{ date: "2026-08-25", time: "14:00", place: "サロン◯◯" }],
+    });
+    const row = rowOf(rows, "trimming");
+    assert.equal(row.state, "unset");
+    assert.equal(row.fallback, "トリミング ・ 記録なし");
+  });
+
+  it("壊れた日付の予約は無視する", () => {
+    const { rows } = build({
+      trimmingReservations: [{ date: "2026-09-31", time: null, place: null }],
+    });
+    assert.equal(rowOf(rows, "trimming").state, "unset");
   });
 });

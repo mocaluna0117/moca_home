@@ -3,10 +3,11 @@ import { describe, it } from "node:test";
 
 import {
   MAX_ITEMS,
-  parseYen,
-  totalYen,
-  validateCareItems,
   careItemsErrorMessage,
+  isTimeOfDay,
+  parseYen,
+  summarizeAmounts,
+  validateCareItems,
 } from "./care";
 
 describe("parseYen — 領収書の書き写しに耐える", () => {
@@ -40,6 +41,17 @@ describe("parseYen — 領収書の書き写しに耐える", () => {
   }
 });
 
+describe("isTimeOfDay — <input type=time> の value と同形", () => {
+  it("HH:MM の24時間表記だけを通す", () => {
+    for (const ok of ["00:00", "09:30", "14:00", "23:59"]) {
+      assert.equal(isTimeOfDay(ok), true, ok);
+    }
+    for (const bad of ["24:00", "9:30", "14:60", "14:00:00", "1400", "", null, 1400]) {
+      assert.equal(isTimeOfDay(bad), false, String(bad));
+    }
+  });
+});
+
 const draft = (name: string, amount: string) => ({ name, amount });
 
 describe("validateCareItems", () => {
@@ -64,23 +76,31 @@ describe("validateCareItems", () => {
     assert.equal(r.ok && r.items.length, 1);
   });
 
-  it("片方だけ埋まっている行はエラーにする（打ち忘れを見逃さない）", () => {
-    assert.deepEqual(validateCareItems([draft("シャンプー", "")]), {
-      ok: false,
-      error: { kind: "bad-amount", seq: 0 },
-    });
+  it("金額が空の行は「未確定」として通す（予約の記録）", () => {
+    const r = validateCareItems([draft("シャンプーコース", ""), draft("カット", "  ")]);
+    assert.deepEqual(r.ok && r.items, [
+      { seq: 0, name: "シャンプーコース", amountYen: null },
+      { seq: 1, name: "カット", amountYen: null },
+    ]);
+  });
+
+  it("金額だけの行はエラー（何の金額か分からない記録を作らない）", () => {
     assert.deepEqual(validateCareItems([draft("", "6600")]), {
       ok: false,
       error: { kind: "no-name", seq: 0 },
     });
   });
 
-  it("1行も無ければエラー", () => {
-    assert.deepEqual(validateCareItems([]), { ok: false, error: { kind: "empty" } });
-    assert.deepEqual(validateCareItems([draft("", "")]), {
+  it("空欄ではないのに読めない金額はエラー（打ち間違いを未確定にしない）", () => {
+    assert.deepEqual(validateCareItems([draft("シャンプー", "abc")]), {
       ok: false,
-      error: { kind: "empty" },
+      error: { kind: "bad-amount", seq: 0 },
     });
+  });
+
+  it("1行も無くてもよい（予約だけ先に入れられる）", () => {
+    assert.deepEqual(validateCareItems([]), { ok: true, items: [] });
+    assert.deepEqual(validateCareItems([draft("", "")]), { ok: true, items: [] });
   });
 
   it("多すぎる明細を弾く", () => {
@@ -103,14 +123,44 @@ describe("validateCareItems", () => {
   it("エラー文が行番号を1始まりで指す", () => {
     assert.equal(
       careItemsErrorMessage({ kind: "bad-amount", seq: 2 }),
-      "3行目の金額を数字で入力してください",
+      "3行目の金額を数字で入力するか、空欄にしてください",
     );
   });
 });
 
-describe("totalYen", () => {
-  it("割引を含めて合計する", () => {
-    assert.equal(totalYen([{ amountYen: 6600 }, { amountYen: 1100 }, { amountYen: -500 }]), 7200);
+describe("summarizeAmounts — 合計は未確定の数と一緒に返す", () => {
+  it("全部入っていれば合計そのまま。割引も含める", () => {
+    assert.deepEqual(
+      summarizeAmounts([{ amountYen: 6600 }, { amountYen: 1100 }, { amountYen: -500 }]),
+      { totalYen: 7200, knownCount: 3, unknownCount: 0, pending: false },
+    );
   });
-  it("空なら0", () => assert.equal(totalYen([]), 0));
+
+  it("空欄の行があれば、入っている分の合計と未確定の数を返す", () => {
+    assert.deepEqual(summarizeAmounts([{ amountYen: 6600 }, { amountYen: null }]), {
+      totalYen: 6600,
+      knownCount: 1,
+      unknownCount: 1,
+      pending: true,
+    });
+  });
+
+  it("明細が無い・全部空欄なら合計0で未確定", () => {
+    assert.deepEqual(summarizeAmounts([]), {
+      totalYen: 0,
+      knownCount: 0,
+      unknownCount: 0,
+      pending: true,
+    });
+    assert.equal(summarizeAmounts([{ amountYen: null }]).pending, true);
+  });
+
+  it("0円は「入っている」（未確定ではない）", () => {
+    assert.deepEqual(summarizeAmounts([{ amountYen: 0 }]), {
+      totalYen: 0,
+      knownCount: 1,
+      unknownCount: 0,
+      pending: false,
+    });
+  });
 });
