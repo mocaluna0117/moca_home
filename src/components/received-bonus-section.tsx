@@ -1,6 +1,7 @@
 import { Gift } from "lucide-react";
 import Link from "next/link";
 
+import { ImagePreview } from "@/components/image-preview";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { ProductName } from "@/components/product-name";
 import { ReceivedBonusDialog } from "@/components/received-bonus-dialog";
@@ -47,7 +48,11 @@ export function ReceivedBonusSection({
         <ul className="divide-y rounded-lg border">
           {recorded.map((r) => (
             <li key={r.id} className="flex items-center gap-3 p-3">
-              <div className="relative size-12 shrink-0 overflow-hidden rounded border bg-muted">
+              <ImagePreview
+                images={r.productId !== null ? [r.imageUrl] : []}
+                caption={r.label}
+                className="relative size-12 shrink-0 overflow-hidden rounded border bg-muted"
+              >
                 {r.productId !== null ? (
                   <ImageWithFallback
                     src={r.imageUrl}
@@ -64,7 +69,7 @@ export function ReceivedBonusSection({
                     />
                   </div>
                 )}
-              </div>
+              </ImagePreview>
               <div className="min-w-0 flex-1">
                 {r.productId !== null ? (
                   <Link

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { formatRuleShort } from "@/components/bonus-badge";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ProductName } from "@/components/product-name";
+import { ImagePreview } from "@/components/image-preview";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,14 +37,27 @@ export function ProductCard({ product }: { product: ProductSummary }) {
             販売終了
           </Badge>
         )}
-        {product.productId !== null && (
-          // z-20 + relative でカード全体のリンクより手前に出す
-          <span className="absolute right-1 bottom-1 z-20 rounded-md bg-background/90">
-            <FavoriteButton
-              productId={product.productId}
-              isFavorite={product.isFavorite}
-              size="sm"
+        {(product.imageUrl || product.productId !== null) && (
+          /*
+            z-20 + relative でカード全体のリンクより手前に出す。
+            拡大と星は同じ帯にまとめる — 角は4つとも札で埋まりうる
+            （左上=販売終了・右上=おまけ札・左下=おまけのみ）ので、
+            新しい角を増やさずに右下に並べる。
+            写真そのものの押し先は変えない（今までどおり商品ページへ行く）。
+          */
+          <span className="absolute right-1 bottom-1 z-20 flex items-center rounded-md bg-background/90">
+            <ImagePreview
+              variant="corner"
+              images={[product.imageUrl]}
+              caption={product.name}
             />
+            {product.productId !== null && (
+              <FavoriteButton
+                productId={product.productId}
+                isFavorite={product.isFavorite}
+                size="sm"
+              />
+            )}
           </span>
         )}
         {product.bonusRule && (

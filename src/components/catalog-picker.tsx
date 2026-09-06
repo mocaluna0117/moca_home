@@ -17,6 +17,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { formatRuleLong } from "@/components/bonus-badge";
 import { Badge } from "@/components/ui/badge";
+import { ImagePreview } from "@/components/image-preview";
 import { Button } from "@/components/ui/button";
 import { ProductName } from "@/components/product-name";
 import { FavoriteButton } from "@/components/favorite-button";
@@ -258,7 +259,14 @@ export function ProductPreview({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           <div className="flex gap-3">
-            <div className="relative size-28 shrink-0 overflow-hidden rounded border bg-muted">
+            {/* まだ買っていない商品の写真が出る唯一の場所。
+                112px では中身が読めないので押したら拡大できる（入れ子なので nested） */}
+            <ImagePreview
+              images={item.imageUrls.length > 0 ? item.imageUrls : [item.imageUrl]}
+              caption={item.name}
+              nested
+              className="relative size-28 shrink-0 overflow-hidden rounded border bg-muted"
+            >
               {item.imageUrl ? (
                 <Image
                   src={item.imageUrl}
@@ -273,7 +281,7 @@ export function ProductPreview({
                   <Gift className="size-5 text-muted-foreground" aria-hidden="true" />
                 </div>
               )}
-            </div>
+            </ImagePreview>
             <div className="min-w-0 flex-1 space-y-1.5">
               <p className="text-sm leading-snug break-words">
                 <ProductName name={item.name} />
@@ -307,9 +315,13 @@ export function ProductPreview({
 
           {item.imageUrls.length > 1 && (
             <div className="flex flex-wrap gap-2">
-              {item.imageUrls.slice(1).map((src) => (
-                <span
+              {item.imageUrls.slice(1).map((src, i) => (
+                <ImagePreview
                   key={src}
+                  images={item.imageUrls}
+                  caption={item.name}
+                  startIndex={i + 1}
+                  nested
                   className="relative size-14 overflow-hidden rounded border bg-muted"
                 >
                   <Image
@@ -320,7 +332,7 @@ export function ProductPreview({
                     className="object-contain"
                     unoptimized
                   />
-                </span>
+                </ImagePreview>
               ))}
             </div>
           )}
@@ -357,7 +369,25 @@ export function ProductPreview({
   );
 }
 
-export function Thumb({ src, alt }: { src: string | null; alt: string }) {
+/**
+ * 32px のサムネイル。**caption を渡したときだけ押して拡大できる**。
+ *
+ * 選択リストの行のように、既にボタンの中に居る場所では渡さない
+ * （ボタンの中のボタンになる。あの行には「詳細」が別に用意してある）。
+ */
+export function Thumb({
+  src,
+  alt,
+  caption,
+  nested = false,
+}: {
+  src: string | null;
+  alt: string;
+  /** 渡すと押して拡大できるようになる。拡大したときの見出しに出す名前 */
+  caption?: string;
+  /** 開いているダイアログの中から使うとき */
+  nested?: boolean;
+}) {
   if (!src) {
     return (
       <span className="flex size-8 shrink-0 items-center justify-center rounded border bg-muted">
@@ -365,10 +395,25 @@ export function Thumb({ src, alt }: { src: string | null; alt: string }) {
       </span>
     );
   }
+  const image = (
+    <Image src={src} alt={alt} fill sizes="32px" className="object-contain" unoptimized />
+  );
+  if (!caption) {
+    return (
+      <span className="relative size-8 shrink-0 overflow-hidden rounded border bg-muted">
+        {image}
+      </span>
+    );
+  }
   return (
-    <span className="relative size-8 shrink-0 overflow-hidden rounded border bg-muted">
-      <Image src={src} alt={alt} fill sizes="32px" className="object-contain" unoptimized />
-    </span>
+    <ImagePreview
+      images={[src]}
+      caption={caption}
+      nested={nested}
+      className="relative size-8 shrink-0 overflow-hidden rounded border bg-muted"
+    >
+      {image}
+    </ImagePreview>
   );
 }
 

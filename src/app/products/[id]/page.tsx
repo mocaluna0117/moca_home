@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FavoriteButton } from "@/components/favorite-button";
+import { ImagePreview } from "@/components/image-preview";
 import { ProductMealHistory } from "@/components/product-meal-history";
 import { ProductShortNameDialog } from "@/components/product-short-name-dialog";
 import { parseBonusRule } from "@/lib/bonus";
@@ -76,7 +77,12 @@ export default async function ProductPage({
       </Link>
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,18rem)_1fr]">
-        <div className="relative aspect-square overflow-hidden rounded-lg border bg-muted">
+        {/* 枠ごと押せる面にする。images が空でも heroImage（注文の写し）はある */}
+        <ImagePreview
+          images={images.length > 0 ? images : [heroImage]}
+          caption={name}
+          className="relative aspect-square overflow-hidden rounded-lg border bg-muted"
+        >
           <ImageWithFallback
             src={heroImage}
             alt={name}
@@ -84,7 +90,7 @@ export default async function ProductPage({
             className="size-full"
             iconClassName="size-10"
           />
-        </div>
+        </ImagePreview>
 
         <div className="flex flex-col gap-3">
           <div className="flex items-start gap-2">
@@ -173,9 +179,13 @@ export default async function ProductPage({
 
       {images.length > 1 && (
         <div className="flex flex-wrap gap-2">
-          {images.slice(1).map((src) => (
-            <div
+          {/* どのサムネイルからでも全部の写真を前へ/次へで送れるようにする */}
+          {images.slice(1).map((src, i) => (
+            <ImagePreview
               key={src}
+              images={images}
+              caption={name}
+              startIndex={i + 1}
               className="relative size-20 overflow-hidden rounded border bg-muted"
             >
               <ImageWithFallback
@@ -185,7 +195,7 @@ export default async function ProductPage({
                 className="size-full"
                 iconClassName="size-4"
               />
-            </div>
+            </ImagePreview>
           ))}
         </div>
       )}

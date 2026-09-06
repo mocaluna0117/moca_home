@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BonusBadge, formatBonusSummary } from "@/components/bonus-badge";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ProductName } from "@/components/product-name";
+import { ImagePreview } from "@/components/image-preview";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { ReceivedBonusDialog } from "@/components/received-bonus-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +90,17 @@ export function OrderCard({
                   sizes="(min-width: 640px) 96px, 80px"
                   className="size-full"
                 />
+                {item.imageUrl && (
+                  // z-20 でカード全体のリンク（兄弟の z-10）より手前に出す。
+                  // 写真そのものを押したときは今までどおり注文詳細へ行く
+                  <span className="absolute right-0.5 bottom-0.5 z-20 rounded-md bg-background/90">
+                    <ImagePreview
+                      variant="corner"
+                      images={[item.imageUrl]}
+                      caption={item.productName}
+                    />
+                  </span>
+                )}
               </div>
               <div className="min-w-0 flex-1">
                 {item.productId !== null ? (
@@ -151,6 +163,16 @@ export function OrderCard({
                       aria-hidden="true"
                     />
                   </div>
+                )}
+                {r.productId !== null && r.imageUrl && (
+                  // 上の明細と同じ（z-20 でカード全体のリンクより手前）
+                  <span className="absolute right-0.5 bottom-0.5 z-20 rounded-md bg-background/90">
+                    <ImagePreview
+                      variant="corner"
+                      images={[r.imageUrl]}
+                      caption={r.label}
+                    />
+                  </span>
                 )}
               </div>
               <div className="min-w-0 flex-1">

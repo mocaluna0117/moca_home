@@ -8,6 +8,7 @@ import {
   formatRuleShort,
 } from "@/components/bonus-badge";
 import { FavoriteButton } from "@/components/favorite-button";
+import { ImagePreview } from "@/components/image-preview";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { ProductName } from "@/components/product-name";
 import { ReceivedBonusSection } from "@/components/received-bonus-section";
@@ -77,7 +78,11 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
               {order.items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell>
-                    <div className="relative size-12 overflow-hidden rounded border bg-muted">
+                    <ImagePreview
+                      images={[item.imageUrl]}
+                      caption={item.productName}
+                      className="relative size-12 overflow-hidden rounded border bg-muted"
+                    >
                       <ImageWithFallback
                         src={item.imageUrl}
                         alt={item.productName}
@@ -85,7 +90,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                         className="size-full"
                         iconClassName="size-4"
                       />
-                    </div>
+                    </ImagePreview>
                   </TableCell>
                   <TableCell className="max-w-md whitespace-normal">
                     {item.productId !== null ? (
@@ -145,7 +150,11 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
               {order.receivedBonuses.map((r) => (
                 <TableRow key={`received-${r.id}`} className="text-muted-foreground">
                   <TableCell>
-                    <div className="relative size-12 overflow-hidden rounded border bg-muted">
+                    <ImagePreview
+                      images={r.productId !== null ? [r.imageUrl] : []}
+                      caption={r.label}
+                      className="relative size-12 overflow-hidden rounded border bg-muted"
+                    >
                       {r.productId !== null ? (
                         <ImageWithFallback
                           src={r.imageUrl}
@@ -159,7 +168,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                           <Gift className="size-4" aria-hidden="true" />
                         </div>
                       )}
-                    </div>
+                    </ImagePreview>
                   </TableCell>
                   <TableCell className="max-w-md whitespace-normal">
                     {r.productId !== null ? (
