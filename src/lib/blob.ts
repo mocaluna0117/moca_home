@@ -9,13 +9,14 @@ import "server-only";
  * 変更は必ず穴になる。用途を列挙し、`parseBlobPath` で**現行より狭く**
  * 判定する（下記 SAFE_LEAF）。
  *
- * 接頭辞は互いの接頭辞になっていない（vaccinations/ と profile/）。
- * これが崩れると parseBlobPath の最初に一致した1件を返す形が壊れるので、
- * 3つ目を足すときは必ず互いに素な語を選ぶ。
+ * 接頭辞は互いの接頭辞になっていない（vaccinations/ と profile/ と
+ * medicines/）。これが崩れると parseBlobPath の最初に一致した1件を返す形が
+ * 壊れるので、4つ目を足すときも必ず互いに素な語を選ぶ。
  */
 export const BLOB_PREFIXES = {
   vaccination: "vaccinations/",
   profile: "profile/",
+  medicine: "medicines/",
 } as const;
 
 export type BlobKind = keyof typeof BLOB_PREFIXES;
@@ -68,6 +69,10 @@ export function parseBlobPath(
  * 上がったとき desktop Chrome / Firefox が `<img>` で描けないため。
  * 証明書のサムネイルが出ないのとは重みが違う（顔写真はページの存在理由）。
  * 上限も 8MB — 表示は最大 128px の丸枠で、原寸を持つ意味がない。
+ *
+ * 薬（medicine）は証明書と同じく HEIC を受ける。パッケージを iPhone で
+ * 撮ってそのまま上げる操作が普通で、変換に失敗した原本を弾くと添付できない。
+ * 上限は 8MB — 表示はダイアログの中と一覧のサムネイルだけで、原寸は要らない。
  */
 export const PHOTO_RULES: Record<
   BlobKind,
@@ -78,6 +83,7 @@ export const PHOTO_RULES: Record<
     types: ["image/jpeg", "image/png", "image/webp"],
     maxBytes: 8 * 1024 * 1024,
   },
+  medicine: { types: ALLOWED_PHOTO_TYPES, maxBytes: 8 * 1024 * 1024 },
 };
 
 /**

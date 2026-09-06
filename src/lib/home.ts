@@ -32,9 +32,9 @@ const SCHEDULE_LABEL: Record<ScheduleKind, string> = {
 };
 
 const SCHEDULE_HREF: Record<ScheduleKind, string> = {
-  heartworm: "/care?tab=heartworm",
-  vaccination: "/calendar?tab=vaccination",
-  trimming: "/care",
+  heartworm: "/heartworm",
+  vaccination: "/vaccinations",
+  trimming: "/trimming",
 };
 
 /**

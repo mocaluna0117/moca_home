@@ -25,7 +25,7 @@ export function NextUpSection({ rows }: { rows: ScheduleRow[] }) {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="font-heading inline-flex items-center gap-1.5 text-sm font-medium">
-        <CalendarDays className="size-4" aria-hidden="true" />
+        <CalendarDays className="size-4 text-brand-pink" aria-hidden="true" />
         次の予定
       </h2>
       {/*

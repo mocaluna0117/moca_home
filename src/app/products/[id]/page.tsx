@@ -20,8 +20,13 @@ import {
 } from "@/components/ui/table";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ProductMealHistory } from "@/components/product-meal-history";
+import { ProductShortNameDialog } from "@/components/product-short-name-dialog";
 import { parseBonusRule } from "@/lib/bonus";
-import { getFavoriteProductIds, getProductDetail } from "@/lib/queries";
+import {
+  getFavoriteProductIds,
+  getProductDetail,
+  getProductShortName,
+} from "@/lib/queries";
 import { getProductMealSummary } from "@/lib/queries-log";
 import { formatDate, formatYen, parseJsonArray } from "@/lib/format";
 import { parseIdParam } from "@/lib/route-params";
@@ -37,11 +42,13 @@ export default async function ProductPage({
   const productId = parseIdParam(id);
   if (productId === null) notFound();
 
-  const [{ product, snapshot, history }, meal, favoriteIds] = await Promise.all([
-    getProductDetail(productId),
-    getProductMealSummary(productId),
-    getFavoriteProductIds(),
-  ]);
+  const [{ product, snapshot, history }, meal, favoriteIds, shortName] =
+    await Promise.all([
+      getProductDetail(productId),
+      getProductMealSummary(productId),
+      getFavoriteProductIds(),
+      getProductShortName(productId),
+    ]);
   if (!product && !snapshot) notFound();
 
   const isGone = product?.fetchStatus === "not_found";
@@ -87,6 +94,17 @@ export default async function ProductPage({
             <FavoriteButton
               productId={productId}
               isFavorite={favoriteIds.has(productId)}
+            />
+          </div>
+          {/*
+            狭い場所（カレンダーのマス・ホームの1行）で使う名前をここで決める。
+            商品名が60〜140文字あるので、決めておくと全画面の表示が読める
+          */}
+          <div>
+            <ProductShortNameDialog
+              productId={productId}
+              productName={name}
+              shortName={shortName}
             />
           </div>
           <p className="text-xl font-semibold tabular-nums">

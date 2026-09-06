@@ -27,6 +27,11 @@ import {
   vaccinations,
 } from "@/lib/db/schema";
 import { nowJstIso } from "@/lib/format";
+import {
+  mealAmountErrorMessage,
+  validateMealAmount,
+  type MealAmountUnit,
+} from "@/lib/meal-amount";
 import { deletableIds } from "@/lib/meal-slot-diff";
 import { getUsualMeals } from "@/lib/queries-log";
 import {
@@ -45,6 +50,9 @@ const MAX_PHOTOS = 8;
 
 function revalidateLog(): void {
   revalidatePath("/calendar");
+  // いつもの・食べたものは /meals、接種記録は /vaccinations へ移った
+  revalidatePath("/meals");
+  revalidatePath("/vaccinations");
   revalidatePath("/");
 }
 
@@ -55,7 +63,10 @@ export interface MealEntryInput {
   id?: number;
   productId: number | null;
   label: string;
-  amount: string | null;
+  /** 分量の数値。単位とセットで入れる（片方だけは弾く） */
+  amountValue: number | null;
+  /** MEAL_AMOUNT_UNITS のいずれか。画面から来た文字列は検証する */
+  amountUnit: string | null;
   note: string | null;
 }
 
@@ -70,13 +81,28 @@ async function resolveMealEntry(row: MealEntryInput): Promise<
       value: {
         productId: number | null;
         label: string;
-        amount: string | null;
+        amountValue: number | null;
+        amountUnit: MealAmountUnit | null;
+        /** 新しい記録では常に null。昔の自由入力を上書きして消す役目 */
+        amount: null;
         note: string | null;
       };
     }
   | { ok: false; error: string }
 > {
-  const amount = row.amount?.trim() ? row.amount.trim().slice(0, 50) : null;
+  // 分量の正解は src/lib/meal-amount.ts が持つ（単位の一覧も上限もあちら）
+  const checked = validateMealAmount({
+    amountValue: row.amountValue,
+    amountUnit: row.amountUnit,
+  });
+  if (!checked.ok) return { ok: false, error: mealAmountErrorMessage(checked.error) };
+  const { amountValue, amountUnit } = checked.value;
+  /*
+    昔の自由入力（"50g"）は保存のたびに消す。数値と単位を入れ直した行に
+    古い文字列が残ると、formatMealAmount がどちらを出すかは分かるものの、
+    片方を消したときに古い値が甦って見える。
+  */
+  const amount = null;
   const note = row.note?.trim() ? row.note.trim().slice(0, 500) : null;
 
   if (row.productId !== null) {
@@ -91,7 +117,10 @@ async function resolveMealEntry(row: MealEntryInput): Promise<
     if (!product) return { ok: false, error: "選択された商品が見つかりません" };
     const label = product.name ?? row.label.trim();
     if (!label) return { ok: false, error: "商品名を取得できませんでした" };
-    return { ok: true, value: { productId: row.productId, label, amount, note } };
+    return {
+      ok: true,
+      value: { productId: row.productId, label, amountValue, amountUnit, amount, note },
+    };
   }
 
   const label = row.label.trim();
@@ -99,7 +128,10 @@ async function resolveMealEntry(row: MealEntryInput): Promise<
   if (label.length > 200) {
     return { ok: false, error: "名前は200文字以内で入力してください" };
   }
-  return { ok: true, value: { productId: null, label, amount, note } };
+  return {
+    ok: true,
+    value: { productId: null, label, amountValue, amountUnit, amount, note },
+  };
 }
 
 /**
@@ -131,6 +163,8 @@ export async function saveMealSlot(
       id?: number;
       productId: number | null;
       label: string;
+      amountValue: number | null;
+      amountUnit: MealAmountUnit | null;
       amount: string | null;
       note: string | null;
     }> = [];
@@ -161,6 +195,8 @@ export async function saveMealSlot(
             .set({
               productId: row.productId,
               label: row.label,
+              amountValue: row.amountValue,
+              amountUnit: row.amountUnit,
               amount: row.amount,
               note: row.note,
               seq: i,
@@ -177,6 +213,8 @@ export async function saveMealSlot(
               seq: i,
               productId: row.productId,
               label: row.label,
+              amountValue: row.amountValue,
+              amountUnit: row.amountUnit,
               amount: row.amount,
               note: row.note,
               createdAt: now(),
@@ -246,7 +284,9 @@ export async function copyMealDay(
             seq: row.seq,
             productId: row.productId,
             label: row.label,
-            amount: row.amount,
+            amountValue: row.amountValue,
+          amountUnit: row.amountUnit,
+          amount: row.amount,
             note: row.note,
             createdAt: now(),
             updatedAt: now(),
@@ -315,6 +355,8 @@ export async function saveUsualMealSlot(
       id?: number;
       productId: number | null;
       label: string;
+      amountValue: number | null;
+      amountUnit: MealAmountUnit | null;
       amount: string | null;
       note: string | null;
     }> = [];
@@ -344,6 +386,8 @@ export async function saveUsualMealSlot(
             .set({
               productId: row.productId,
               label: row.label,
+              amountValue: row.amountValue,
+              amountUnit: row.amountUnit,
               amount: row.amount,
               note: row.note,
               seq: i,
@@ -359,6 +403,8 @@ export async function saveUsualMealSlot(
               seq: i,
               productId: row.productId,
               label: row.label,
+              amountValue: row.amountValue,
+              amountUnit: row.amountUnit,
               amount: row.amount,
               note: row.note,
               createdAt: now(),
@@ -456,6 +502,8 @@ async function applyUsualSlot(
   const values: Array<{
     productId: number | null;
     label: string;
+    amountValue: number | null;
+    amountUnit: MealAmountUnit | null;
     amount: string | null;
     note: string | null;
   }> = [];
@@ -485,6 +533,8 @@ async function applyUsualSlot(
           seq: i,
           productId: row.productId,
           label: row.label,
+          amountValue: row.amountValue,
+          amountUnit: row.amountUnit,
           amount: row.amount,
           note: row.note,
           createdAt: stamp,

@@ -21,7 +21,7 @@ export function RecentMealsSection({ days }: { days: HomeRecentDay[] }) {
     <section className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <h2 className="font-heading inline-flex items-center gap-1.5 text-sm font-medium">
-          <UtensilsCrossed className="size-4" aria-hidden="true" />
+          <UtensilsCrossed className="size-4 text-brand-pink" aria-hidden="true" />
           最近のごはん
         </h2>
         <Link

@@ -40,6 +40,10 @@ export interface UsualItem {
   slot: MealSlot;
   productId: number | null;
   label: string;
+  /** 分量の数値と単位（src/lib/meal-amount.ts） */
+  amountValue: number | null;
+  amountUnit: string | null;
+  /** 分ける前に登録した自由入力。新しい登録には入らない */
   amount: string | null;
   note: string | null;
 }

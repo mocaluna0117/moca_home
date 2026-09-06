@@ -37,7 +37,8 @@ npm run dev                  # http://localhost:3000
 src/lib/scraper/  client(Cookie/待機/再試行) login orders products parse sync
 src/lib/db/       schema index
 src/lib/          queries(読み取り) format
-src/app/          page(ホーム) orders products/[id] calendar care favorites api/sync
+src/app/          page(ホーム) orders products/[id] calendar meals trimming hospital
+                  heartworm medicines vaccinations favorites api/sync
 ```
 
 ### ルート
@@ -47,9 +48,14 @@ src/app/          page(ホーム) orders products/[id] calendar care favorites a
 | `/` | **ホーム** — 今日のもか(写真・年齢・体重)、次の予定(フィラリア・ワクチン・トリミングの予約)、最近のごはん、買ったもの集計 |
 | `/orders` | 購入履歴一覧 — 注文ごと/商品ごとの切り替え、検索、お気に入り絞り込み |
 | `/orders/[id]` | 注文詳細(明細・おまけの記録) |
-| `/products/[id]` | 商品詳細(購入履歴・おまけ予測) |
-| `/calendar` | カレンダー — ごはん、いつものご飯(登録すると毎朝その日の記録に入る)、接種記録、トリミング・通院・フィラリアの印と今後の予定 |
-| `/care` | フィラリアの予定と実績、トリミングの予約・記録（いつも行くお店とコースを登録して選べる）、通院の記録 |
+| `/products/[id]` | 商品詳細(購入履歴・おまけ予測・**短い名前**の登録) |
+| `/calendar` | カレンダー — その日のごはんと、トリミング・通院・フィラリア・ワクチンの色つきの印(破線は予定)。凡例つき |
+| `/meals` | **ごはん** — いつものご飯(登録すると毎朝その日の記録に入る)／食べたもの(食歴・短い名前の登録) |
+| `/trimming` | トリミング — 予約と記録(いつも行くお店とコースを登録して選べる)。予約は近い順、済んだ記録はその下 |
+| `/hospital` | 通院の記録(いつも行く病院を登録して選べる) |
+| `/heartworm` | フィラリアの予定と実績(予定日はあとから動かせる) |
+| `/medicines` | 薬の登録(パッケージの写真を1枚まで) |
+| `/vaccinations` | 接種記録(証明書の写真・次回予定日) |
 | `/favorites` | お気に入り |
 | `/login` | `APP_PASSWORD` を設定したときだけ通る認証画面 |
 
@@ -57,6 +63,10 @@ src/app/          page(ホーム) orders products/[id] calendar care favorites a
 
 - **ページングは `?pageno=N`** — `page_no` は無視され、常に1ページ目が返る。
 - **金額は整数円、日時は `+09:00` 付き ISO 文字列**で保存(`new Date(文字列)` は使わない)。
+- **暦日は裸の `YYYY-MM-DD`**。ごはんの分量は「数値 + 単位」(`src/lib/meal-amount.ts` が単位の一覧を持つ)。
+  分ける前に入れた自由入力は `amount` 列に残り、`formatMealAmount()` が拾う。
+- **商品名の短縮は `shortLabel(name, max, registered)`** の1本。登録された短い名前(`product_short_names`)が
+  あればそれ、無ければ `core-name.ts` の推定に落ちる。
 - **セレクタは `src/lib/scraper/parse.ts` に集約**。サイトの HTML が変わったらこのファイルだけを直す。
   取得できない場合は `SITE_LAYOUT_CHANGED` で即座に失敗させる。
 - **販売終了商品**(商品ページが404)は `products.fetch_status='not_found'` とし、

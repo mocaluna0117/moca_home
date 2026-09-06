@@ -12,6 +12,7 @@ import {
 import { db } from "@/lib/db";
 import {
   mealEntries,
+  productShortNames,
   products,
   usualMeals,
   vaccinationPhotos,
@@ -33,6 +34,12 @@ function firstImage(raw: string | null): string | null {
 export interface MealEntryRow extends MealEntry {
   /** product_id があるときだけ products.image_urls の先頭 */
   imageUrl: string | null;
+  /**
+   * 商品に登録された「短い名前」。狭い場所（カレンダーのマス・ホームの1行）
+   * では label の代わりにこれを出す（shortLabel の第3引数）。
+   * 自由入力の行と未登録の商品では null。
+   */
+  registeredShortName: string | null;
 }
 
 export interface DayMeals {
@@ -49,11 +56,19 @@ function emptyDay(date: DateStr): DayMeals {
 }
 
 function groupByDate(
-  rows: { row: MealEntry; productImages: string | null }[],
+  rows: {
+    row: MealEntry;
+    productImages: string | null;
+    registeredShortName: string | null;
+  }[],
 ): Map<DateStr, DayMeals> {
   const map = new Map<DateStr, DayMeals>();
   for (const r of rows) {
-    const entry: MealEntryRow = { ...r.row, imageUrl: firstImage(r.productImages) };
+    const entry: MealEntryRow = {
+      ...r.row,
+      imageUrl: firstImage(r.productImages),
+      registeredShortName: r.registeredShortName,
+    };
     const day = map.get(entry.date) ?? emptyDay(entry.date);
     day[entry.slot].push(entry);
     day.total += 1;
@@ -71,9 +86,17 @@ export async function getMealMonth(ym: YearMonth): Promise<DayMeals[]> {
   if (!range) return [];
 
   const rows = await db
-    .select({ row: mealEntries, productImages: products.imageUrls })
+    .select({
+      row: mealEntries,
+      productImages: products.imageUrls,
+      registeredShortName: productShortNames.shortName,
+    })
     .from(mealEntries)
     .leftJoin(products, eq(products.id, mealEntries.productId))
+    .leftJoin(
+      productShortNames,
+      eq(productShortNames.productId, mealEntries.productId),
+    )
     .where(
       and(gte(mealEntries.date, range.start), lt(mealEntries.date, range.endExclusive)),
     )
@@ -86,9 +109,17 @@ export async function getMealMonth(ym: YearMonth): Promise<DayMeals[]> {
 /** 1日ぶん。ダイアログの初期値に使う（記録が無くても空の形を返す）。 */
 export async function getMealDay(date: DateStr): Promise<DayMeals> {
   const rows = await db
-    .select({ row: mealEntries, productImages: products.imageUrls })
+    .select({
+      row: mealEntries,
+      productImages: products.imageUrls,
+      registeredShortName: productShortNames.shortName,
+    })
     .from(mealEntries)
     .leftJoin(products, eq(products.id, mealEntries.productId))
+    .leftJoin(
+      productShortNames,
+      eq(productShortNames.productId, mealEntries.productId),
+    )
     .where(eq(mealEntries.date, date))
     .orderBy(asc(mealEntries.seq), asc(mealEntries.id))
     .all();
@@ -110,16 +141,28 @@ export async function getPreviousSlot(
   if (!prev) return null;
 
   const rows = await db
-    .select({ row: mealEntries, productImages: products.imageUrls })
+    .select({
+      row: mealEntries,
+      productImages: products.imageUrls,
+      registeredShortName: productShortNames.shortName,
+    })
     .from(mealEntries)
     .leftJoin(products, eq(products.id, mealEntries.productId))
+    .leftJoin(
+      productShortNames,
+      eq(productShortNames.productId, mealEntries.productId),
+    )
     .where(and(eq(mealEntries.date, prev.date), eq(mealEntries.slot, slot)))
     .orderBy(asc(mealEntries.seq), asc(mealEntries.id))
     .all();
 
   return {
     date: prev.date,
-    entries: rows.map((r) => ({ ...r.row, imageUrl: firstImage(r.productImages) })),
+    entries: rows.map((r) => ({
+      ...r.row,
+      imageUrl: firstImage(r.productImages),
+      registeredShortName: r.registeredShortName,
+    })),
   };
 }
 
@@ -148,9 +191,17 @@ export async function getRecentMealDays(limit = 4): Promise<DayMeals[]> {
   if (days.length === 0) return [];
 
   const rows = await db
-    .select({ row: mealEntries, productImages: products.imageUrls })
+    .select({
+      row: mealEntries,
+      productImages: products.imageUrls,
+      registeredShortName: productShortNames.shortName,
+    })
     .from(mealEntries)
     .leftJoin(products, eq(products.id, mealEntries.productId))
+    .leftJoin(
+      productShortNames,
+      eq(productShortNames.productId, mealEntries.productId),
+    )
     .where(
       inArray(
         mealEntries.date,
@@ -173,9 +224,15 @@ export interface UsualMealRow {
   productId: number | null;
   /** 表示・記録に使う名前。カタログにあれば今の products.name、無ければ登録時の写し */
   label: string;
+  /** 分量の数値と単位（formatMealAmount に渡す） */
+  amountValue: number | null;
+  amountUnit: string | null;
+  /** 分ける前に入れた自由入力。新しい登録には入らない */
   amount: string | null;
   note: string | null;
   imageUrl: string | null;
+  /** 商品に登録された短い名前。未登録・自由入力なら null */
+  registeredShortName: string | null;
 }
 
 /**
@@ -203,13 +260,20 @@ export async function getUsualMeals(): Promise<UsualMealRow[]> {
       seq: usualMeals.seq,
       productId: usualMeals.productId,
       label: usualMeals.label,
+      amountValue: usualMeals.amountValue,
+      amountUnit: usualMeals.amountUnit,
       amount: usualMeals.amount,
       note: usualMeals.note,
       productName: products.name,
       productImages: products.imageUrls,
+      registeredShortName: productShortNames.shortName,
     })
     .from(usualMeals)
     .leftJoin(products, eq(products.id, usualMeals.productId))
+    .leftJoin(
+      productShortNames,
+      eq(productShortNames.productId, usualMeals.productId),
+    )
     .orderBy(asc(usualMeals.slot), asc(usualMeals.seq), asc(usualMeals.id))
     .all();
 
@@ -224,9 +288,12 @@ export async function getUsualMeals(): Promise<UsualMealRow[]> {
       seq: r.seq,
       productId: r.productId,
       label: r.productName?.trim() || r.label,
+      amountValue: r.amountValue,
+      amountUnit: r.amountUnit,
       amount: r.amount,
       note: r.note,
       imageUrl: firstImage(r.productImages),
+      registeredShortName: r.registeredShortName,
     });
   }
   return out;
@@ -239,6 +306,8 @@ export interface FoodHistory {
   /** "p:1234" | "n:手作りごはん" — getProductSummaries と同じキー規約 */
   key: string;
   label: string;
+  /** 商品に登録された短い名前。一覧から登録できるようにするため一緒に引く */
+  registeredShortName: string | null;
   imageUrl: string | null;
   /** 初めて食べた日 — これが「いつから」の答え */
   firstDate: DateStr;
@@ -268,9 +337,14 @@ export async function getFoodHistory(q?: string): Promise<FoodHistory[]> {
       evening: sql<number>`sum(case when ${mealEntries.slot} = 'evening' then 1 else 0 end)`,
       treat: sql<number>`sum(case when ${mealEntries.slot} = 'treat' then 1 else 0 end)`,
       productImages: sql<string | null>`max(${products.imageUrls})`,
+      registeredShortName: sql<string | null>`max(${productShortNames.shortName})`,
     })
     .from(mealEntries)
     .leftJoin(products, eq(products.id, mealEntries.productId))
+    .leftJoin(
+      productShortNames,
+      eq(productShortNames.productId, mealEntries.productId),
+    )
     .where(term ? like(mealEntries.label, `%${term}%`) : undefined)
     .groupBy(KEY_EXPR)
     .orderBy(desc(sql`max(${mealEntries.date})`))
@@ -280,6 +354,7 @@ export async function getFoodHistory(q?: string): Promise<FoodHistory[]> {
     productId: r.productId,
     key: r.key,
     label: r.label,
+    registeredShortName: r.registeredShortName,
     imageUrl: firstImage(r.productImages),
     firstDate: r.firstDate,
     lastDate: r.lastDate,

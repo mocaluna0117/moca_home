@@ -19,13 +19,9 @@ import {
  */
 const STEPS = [
   { href: "/calendar", label: "ごはんを記録する", Icon: UtensilsCrossed },
-  { href: "/care?tab=heartworm", label: "フィラリアの予定をつくる", Icon: Pill },
-  {
-    href: "/calendar?tab=vaccination",
-    label: "ワクチンの記録を入れる",
-    Icon: Syringe,
-  },
-  { href: "/care", label: "トリミングを記録する", Icon: Scissors },
+  { href: "/heartworm", label: "フィラリアの予定をつくる", Icon: Pill },
+  { href: "/vaccinations", label: "ワクチンの記録を入れる", Icon: Syringe },
+  { href: "/trimming", label: "トリミングを記録する", Icon: Scissors },
 ] as const;
 
 export function GettingStarted() {
@@ -51,7 +47,7 @@ export function GettingStarted() {
               className="-mx-2 flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-muted/40"
             >
               <step.Icon
-                className="size-4 shrink-0 text-muted-foreground"
+                className="size-4 shrink-0 text-brand-pink"
                 aria-hidden="true"
               />
               <span className="min-w-0 flex-1">{step.label}</span>

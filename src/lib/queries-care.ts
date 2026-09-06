@@ -41,29 +41,48 @@ export interface CareVisitRow {
 }
 
 /**
- * ある種類の来店記録を新しい順に。明細は1回の追加クエリでまとめて引く
- * （getOrders と同じく N+1 を作らない）。
+ * ある種類の来店記録。**これからの予約が近い順に上、済んだ記録が新しい順に下。**
  *
- * 新しい順なので、今日より先の予約が先頭に並ぶ（「次の予約」が一番上）。
+ * 全部を新しい順にすると、予約が3件あるとき「一番遠い日」が先頭に来て、
+ * 次に行く日を探すのに一番下まで目を落とすことになる。予約は「次はいつか」、
+ * 記録は「直近何をしたか」で読む向きが逆なので、2本引いて繋ぐ
+ * （getUpcomingCareVisits / getRecentCareDates と同じ作法）。
+ *
+ * 明細は1回の追加クエリでまとめて引く（getOrders と同じく N+1 を作らない）。
  * お店の名前は登録側を優先する（heartworm の薬名と同じ作法）。
  */
-export async function getCareVisits(kind: CareKind): Promise<CareVisitRow[]> {
-  const rows = await db
-    .select({
-      id: careVisits.id,
-      kind: careVisits.kind,
-      date: careVisits.date,
-      time: careVisits.time,
-      placeId: careVisits.placeId,
-      place: careVisits.place,
-      note: careVisits.note,
-      placeName: carePlaces.name,
-    })
-    .from(careVisits)
-    .leftJoin(carePlaces, eq(carePlaces.id, careVisits.placeId))
-    .where(eq(careVisits.kind, kind))
-    .orderBy(desc(careVisits.date), desc(careVisits.time), desc(careVisits.id))
-    .all();
+export async function getCareVisits(
+  kind: CareKind,
+  today: DateStr,
+): Promise<CareVisitRow[]> {
+  const columns = {
+    id: careVisits.id,
+    kind: careVisits.kind,
+    date: careVisits.date,
+    time: careVisits.time,
+    placeId: careVisits.placeId,
+    place: careVisits.place,
+    note: careVisits.note,
+    placeName: carePlaces.name,
+  };
+  const [upcoming, past] = await Promise.all([
+    // 今日ぶんは「これから」に入れる。当日の予約は下まで探させない
+    db
+      .select(columns)
+      .from(careVisits)
+      .leftJoin(carePlaces, eq(carePlaces.id, careVisits.placeId))
+      .where(and(eq(careVisits.kind, kind), gte(careVisits.date, today)))
+      .orderBy(asc(careVisits.date), asc(careVisits.time), asc(careVisits.id))
+      .all(),
+    db
+      .select(columns)
+      .from(careVisits)
+      .leftJoin(carePlaces, eq(carePlaces.id, careVisits.placeId))
+      .where(and(eq(careVisits.kind, kind), lt(careVisits.date, today)))
+      .orderBy(desc(careVisits.date), desc(careVisits.time), desc(careVisits.id))
+      .all(),
+  ]);
+  const rows = [...upcoming, ...past];
   if (rows.length === 0) return [];
 
   const items = await db
@@ -277,6 +296,10 @@ export interface MedicineRow {
   forHeartworm: boolean;
   /** この薬を選んである予定の数。削除の影響が見えるように数える */
   usedCount: number;
+  /** パッケージ写真があるか（実体は /api/medicine-photos/[id] が返す） */
+  hasPhoto: boolean;
+  /** ?v= のキャッシュ破り。差し替えたときに古い写真を出さないため */
+  photoUpdatedAt: string | null;
 }
 
 /** 登録済みの薬。名前順。 */
@@ -290,11 +313,33 @@ export async function getMedicines(): Promise<MedicineRow[]> {
         select count(*) from ${heartwormDoses}
         where ${heartwormDoses.medicineId} = ${medicines.id}
       )`,
+      photoPathname: medicines.photoPathname,
+      photoUpdatedAt: medicines.photoUpdatedAt,
     })
     .from(medicines)
     .orderBy(asc(medicines.name))
     .all();
-  return rows;
+  // pathname 自体はクライアントに渡さない（表示も削除もこちらで足りる）
+  return rows.map(({ photoPathname, ...r }) => ({
+    ...r,
+    hasPhoto: photoPathname !== null,
+  }));
+}
+
+/** 薬1件の写真。/api/medicine-photos/[id] だけが呼ぶ */
+export async function getMedicinePhoto(
+  id: number,
+): Promise<{ pathname: string; contentType: string | null } | null> {
+  const row = await db
+    .select({
+      pathname: medicines.photoPathname,
+      contentType: medicines.photoContentType,
+    })
+    .from(medicines)
+    .where(eq(medicines.id, id))
+    .get();
+  if (!row?.pathname) return null;
+  return { pathname: row.pathname, contentType: row.contentType };
 }
 
 /** フィラリアの選択肢。for_heartworm を立てた薬だけ */

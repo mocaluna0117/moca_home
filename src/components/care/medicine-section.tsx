@@ -6,7 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import type { MedicineRow } from "@/lib/queries-care";
 
 /** 薬の一覧（RSC）。 */
-export function MedicineSection({ medicines }: { medicines: MedicineRow[] }) {
+export function MedicineSection({
+  medicines,
+  blobEnabled,
+}: {
+  medicines: MedicineRow[];
+  /** Blob が未設定なら写真まわりを出さない（名前だけで機能は成立する） */
+  blobEnabled: boolean;
+}) {
   const heartworm = medicines.filter((m) => m.forHeartworm).length;
 
   return (
@@ -22,7 +29,7 @@ export function MedicineSection({ medicines }: { medicines: MedicineRow[] }) {
           </span>
         )}
         <div className="ml-auto">
-          <MedicineDialog triggerVariant="default" />
+          <MedicineDialog triggerVariant="default" blobEnabled={blobEnabled} />
         </div>
       </div>
 
@@ -41,6 +48,15 @@ export function MedicineSection({ medicines }: { medicines: MedicineRow[] }) {
               key={m.id}
               className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border p-3"
             >
+              {/* private な blob を /api 経由で出すので next/image は使わない */}
+              {blobEnabled && m.hasPhoto && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`/api/medicine-photos/${m.id}?v=${encodeURIComponent(m.photoUpdatedAt ?? "")}`}
+                  alt=""
+                  className="size-10 shrink-0 rounded-md border object-contain"
+                />
+              )}
               <span className="break-words">{m.name}</span>
               {m.forHeartworm && (
                 <Badge variant="secondary" className="font-normal">
@@ -54,7 +70,14 @@ export function MedicineSection({ medicines }: { medicines: MedicineRow[] }) {
               )}
               <div className="ml-auto flex items-center gap-1">
                 <MedicineDialog
-                  medicine={{ id: m.id, name: m.name, forHeartworm: m.forHeartworm }}
+                  medicine={{
+                    id: m.id,
+                    name: m.name,
+                    forHeartworm: m.forHeartworm,
+                    hasPhoto: m.hasPhoto,
+                    photoUpdatedAt: m.photoUpdatedAt,
+                  }}
+                  blobEnabled={blobEnabled}
                   triggerVariant="ghost"
                 />
                 <MedicineDeleteButton id={m.id} name={m.name} usedCount={m.usedCount} />
@@ -66,6 +89,7 @@ export function MedicineSection({ medicines }: { medicines: MedicineRow[] }) {
 
       <p className="text-xs text-muted-foreground">
         薬を削除しても、過去の記録から名前が消えることはありません。
+        {blobEnabled && "写真は1薬につき1枚で、差し替えると前の写真は消えます。"}
       </p>
     </section>
   );

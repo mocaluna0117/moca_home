@@ -8,6 +8,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+import type { MealAmountUnit } from "@/lib/meal-amount";
 import type { RemindError } from "@/lib/mail-config";
 import type { DogSex } from "@/lib/profile";
 
@@ -197,6 +198,36 @@ export const productFavorites = sqliteTable(
 
 export type ProductFavorite = typeof productFavorites.$inferSelect;
 
+/**
+ * 商品に付ける「短い名前」。カレンダーのマスやホームの1行など、
+ * 幅の無い場所で使う表示名。
+ *
+ * ショップの商品名は60〜140文字あり（「【送料無料】国産 鹿肉 …」）、
+ * 141px のマスには入らない。core-name.ts の推定で芯を取り出しているが
+ * 外すことがあり、外した日は名前が途中で切れる。飼い主が「ペロリ」と
+ * 一度登録すれば、以後どの画面でもそれが出る。
+ *
+ * **products テーブルに列を足さない。** あちらはスクレイパが上書きする
+ * 領域で、同期のたびに手で入れた名前が消える危険がある。product_favorites
+ * と同じく「アプリだけが書く別テーブル」にして、同期と書き手を分ける。
+ *
+ * 1商品 = 高々1行。代理キーを置かず product_id 自体を PK にする
+ * （integer PRIMARY KEY は rowid の別名なので追加インデックス不要）。
+ * 登録を消したい場合は行ごと消す（product_favorites の starred=false のような
+ * 墓標は要らない — 取り込みで復活する経路が無いため）。
+ */
+export const productShortNames = sqliteTable("product_short_names", {
+  productId: integer("product_id")
+    .primaryKey()
+    .references(() => products.id, { onDelete: "cascade" }),
+  /** 表示名。20文字まで（actions-product-names.ts が守る） */
+  shortName: text("short_name").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export type ProductShortName = typeof productShortNames.$inferSelect;
+
 // ---------------------------------------------------------------- 飼育記録
 //
 // 以下3テーブルの `date` / `next_due_date` は、他のカラムと違い
@@ -232,7 +263,21 @@ export const mealEntries = sqliteTable(
      * 「何を食べていたか」が読み取れなくなってはいけない。
      */
     label: text("label").notNull(),
-    /** 分量の自由入力 "50g" / "1袋" — 単位が一定しないので数値にしない */
+    /**
+     * 分量。**数値と単位に分ける**（50 と "g"）。自由入力だった頃は
+     * 「50g」「50ｇ」「50グラム」が混ざり、量として比べられなかった。
+     * どちらも null なら未入力。片方だけの行は作らない（actions-log.ts の
+     * resolveMealEntry が validateMealAmount で弾く）。
+     */
+    amountValue: integer("amount_value"),
+    /** MEAL_AMOUNT_UNITS のいずれか。src/lib/meal-amount.ts が正解を持つ */
+    amountUnit: text("amount_unit").$type<MealAmountUnit>(),
+    /**
+     * 昔の自由入力（"50g" / "1袋" / "少なめ"）。**新しい記録には書かない。**
+     * 数値と単位に分ける前の行が読めなくなるのを防ぐためだけに残してある
+     * （formatMealAmount が amount_value を優先し、無ければこれを返す）。
+     * その行を編集して保存すると、数値と単位に置き換わってここは空になる。
+     */
     amount: text("amount"),
     note: text("note"),
     createdAt: text("created_at").notNull(),
@@ -285,7 +330,10 @@ export const usualMeals = sqliteTable(
      * 読み取り時にやる）。カタログから消えても何を登録したかは読める。
      */
     label: text("label").notNull(),
-    /** 分量の自由入力 "50g" / "1袋"（meal_entries と同じ） */
+    /** 分量の数値と単位（meal_entries と同じ） */
+    amountValue: integer("amount_value"),
+    amountUnit: text("amount_unit").$type<MealAmountUnit>(),
+    /** 昔の自由入力。新しい登録には書かない（meal_entries と同じ） */
     amount: text("amount"),
     note: text("note"),
     createdAt: text("created_at").notNull(),
@@ -517,6 +565,21 @@ export const medicines = sqliteTable(
     forHeartworm: integer("for_heartworm", { mode: "boolean" })
       .notNull()
       .default(false),
+    /**
+     * パッケージの写真（1薬に高々1枚）。実体は Vercel Blob の
+     * "medicines/" 接頭辞にあり、ここはメタデータだけを持つ。
+     * 列の形は dog_profile の写真列と同じ — 1行1枚なので子テーブルを作らない
+     * （vaccination_photos が子テーブルなのは証明書が複数枚あるため）。
+     *
+     * url は**保存しない**。private ストアの URL は誰も直接開けず、表示は
+     * /api/medicine-photos/[id]、削除は pathname で足りる（dog_profile と同じ）。
+     */
+    photoPathname: text("photo_pathname"),
+    photoContentType: text("photo_content_type"),
+    /** 添付時の検証値の控え（診断用） */
+    photoSizeBytes: integer("photo_size_bytes"),
+    /** +09:00 付き ISO。?v= のキャッシュ破り */
+    photoUpdatedAt: text("photo_updated_at"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

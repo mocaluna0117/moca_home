@@ -23,6 +23,7 @@ import {
   type FavoriteSource,
   type Product,
   type ReceivedBonus,
+  productShortNames,
 } from "@/lib/db/schema";
 
 export interface OrderItemWithBonus extends OrderItem {
@@ -576,4 +577,19 @@ export async function getCatalogState() {
         .get()
     )?.n ?? 0;
   return { count, lastSweptAt: lastRun?.finishedAt ?? null };
+}
+
+/**
+ * 1商品の「短い名前」。商品ページが登録ダイアログの初期値に使う。
+ *
+ * 一覧側（カレンダー・ホーム・食べたもの）は queries-log.ts が join で
+ * 一緒に引くので、ここを呼ぶのは商品ページだけ。
+ */
+export async function getProductShortName(productId: number): Promise<string | null> {
+  const row = await db
+    .select({ shortName: productShortNames.shortName })
+    .from(productShortNames)
+    .where(eq(productShortNames.productId, productId))
+    .get();
+  return row?.shortName ?? null;
 }

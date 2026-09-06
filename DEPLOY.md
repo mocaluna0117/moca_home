@@ -153,6 +153,12 @@ SQLite は `ALTER` で列の制約を変えられないので、スクリプト�
 `no such column` / `no such table` で開けません（ホームは新しい列を読むので
 サイトの入口ごと落ちます）。
 
+> 2026-09-06 の大型改修では、`meal_entries` / `usual_meals` に
+> `amount_value` / `amount_unit`、`medicines` に写真の4列を足し、
+> `product_short_names` テーブルを新設しました。列はすべて nullable なので
+> `syncColumns` が、新テーブルは `PUSH_TABLES` に足したうえで `CREATE TABLE`
+> が届けます。**この回はテーブルの作り直しが1つもありません。**
+>
 > 2026-09-04 のトリミングの予約対応がこの例です（この順で実施済み）:
 > `care_visit_items.amount_yen` が「金額未確定」を表すために nullable になり、
 > `care_visits` に `time` / `place_id` 列、`care_places` / `care_courses`
@@ -196,6 +202,7 @@ INSERT … SELECT → DROP → RENAME → インデックス再作成）。手�
 |---|---|---|---|
 | `vaccinations/` | ワクチン接種証明書 | jpeg / png / webp / **heic / heif** | 20MB |
 | `profile/` | もかのプロフィール写真 | jpeg / png / webp | 8MB |
+| `medicines/` | 薬のパッケージ写真（1薬1枚） | jpeg / png / webp / heic / heif | 8MB |
 
 `profile/` が HEIC を受けないのは、変換に失敗した原本がそのまま上がったとき
 desktop の Chrome / Firefox が `<img>` で描けないためです（丸い顔写真が出ないのは、
@@ -301,7 +308,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://<あなたのURL>/api/cron/
 付かないので、この数字が唯一の手がかりです。いつものご飯の登録を開いて
 商品を選び直してください。
 **2回叩いても2回目の `created` は0**（同じ日はもう決着している）。翌朝
-`/calendar` の「いつもの」タブに「今日の朝ごはん: 記録あり」と出ていれば、
+`/meals` の「いつもの」タブに「今日の朝ごはん: 記録あり」と出ていれば、
 cron が実際に走った証拠です（自動で入れた記録に印は付かないので、確認できるのはこれだけ）。
 
 ### パスを変えたときは Redeploy してから4つ確認する

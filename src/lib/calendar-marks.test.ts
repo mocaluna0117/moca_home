@@ -70,20 +70,20 @@ describe("buildCalendarMarks — 記録の印", () => {
     assert.equal(trimming.state, "done");
     assert.equal(trimming.label, "トリミング");
     assert.equal(trimming.icon, "scissors");
-    assert.equal(trimming.href, "/care");
+    assert.equal(trimming.href, "/trimming");
     assert.equal(trimming.detail, null);
 
     const hospital = on(marks, "2026-08-06")[0];
     assert.equal(hospital.label, "通院");
     assert.equal(hospital.icon, "stethoscope");
-    assert.equal(hospital.href, "/care?tab=hospital");
+    assert.equal(hospital.href, "/hospital");
 
     const vaccination = on(marks, "2026-08-07")[0];
     assert.equal(vaccination.kind, "vaccination");
     assert.equal(vaccination.state, "done");
     assert.equal(vaccination.label, "ワクチン");
     assert.equal(vaccination.icon, "syringe");
-    assert.equal(vaccination.href, "/calendar?tab=vaccination");
+    assert.equal(vaccination.href, "/vaccinations");
     // 名前はラベルではなく補足に入る（マスを広げないため）
     assert.equal(vaccination.detail, "6種混合");
 
@@ -92,7 +92,7 @@ describe("buildCalendarMarks — 記録の印", () => {
     assert.equal(heartworm.state, "done");
     assert.equal(heartworm.label, "フィラリア");
     assert.equal(heartworm.icon, "pill");
-    assert.equal(heartworm.href, "/care?tab=heartworm");
+    assert.equal(heartworm.href, "/heartworm");
     assert.equal(heartworm.detail, "ネクスガード");
   });
 
@@ -114,7 +114,7 @@ describe("buildCalendarMarks — 予定の印", () => {
     assert.equal(mark.state, "planned");
     assert.equal(mark.label, "フィラリアの予定");
     assert.equal(mark.icon, "pill");
-    assert.equal(mark.href, "/care?tab=heartworm");
+    assert.equal(mark.href, "/heartworm");
     assert.equal(mark.detail, "ネクスガード");
   });
 
@@ -132,7 +132,7 @@ describe("buildCalendarMarks — 予定の印", () => {
     assert.equal(mark.state, "planned");
     assert.equal(mark.label, "ワクチンの予定");
     assert.equal(mark.icon, "syringe");
-    assert.equal(mark.href, "/calendar?tab=vaccination");
+    assert.equal(mark.href, "/vaccinations");
     assert.equal(mark.detail, "6種混合");
   });
 
@@ -157,13 +157,13 @@ describe("buildCalendarMarks — トリミング・通院の予約（今日よ�
     assert.equal(trimming.state, "planned");
     assert.equal(trimming.label, "トリミングの予定");
     assert.equal(trimming.icon, "scissors");
-    assert.equal(trimming.href, "/care");
+    assert.equal(trimming.href, "/trimming");
     assert.equal(trimming.detail, null);
 
     const hospital = on(marks, "2026-08-26")[0];
     assert.equal(hospital.state, "planned");
     assert.equal(hospital.label, "通院の予定");
-    assert.equal(hospital.href, "/care?tab=hospital");
+    assert.equal(hospital.href, "/hospital");
   });
 
   it("今日の予約は記録の印（その日のうちに付け替える列が無い）", () => {

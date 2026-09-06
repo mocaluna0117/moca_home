@@ -91,7 +91,7 @@ export function UrgentBand({
                     // ワクチンはこの場で記録できない（接種日・次回予定日・費用が要る）。
                     // 入力の場所へ運ぶだけにする
                     <Link
-                      href="/calendar?tab=vaccination"
+                      href="/vaccinations"
                       className={buttonVariants({ variant: "outline", size: "sm" })}
                     >
                       接種記録を見る

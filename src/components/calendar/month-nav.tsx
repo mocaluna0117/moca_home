@@ -4,18 +4,20 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import type { MonthGrid } from "@/lib/calendar";
 
-/** 月の移動は <Link>。戻るで辿れて URL を共有できる。 */
+/**
+ * 月の移動は <Link>。戻るで辿れて URL を共有できる。
+ *
+ * かつてタブ（記録・いつもの…）を跨いで月を保つため tab を受け取っていたが、
+ * カレンダーが1枚になったので ?m= だけで足りる。
+ */
 export function MonthNav({
   grid,
-  tab,
   thisMonth,
 }: {
   grid: MonthGrid;
-  tab: string;
   thisMonth: string;
 }) {
-  const href = (m: string) =>
-    `/calendar?m=${m}${tab !== "log" ? `&tab=${tab}` : ""}`;
+  const href = (m: string) => `/calendar?m=${m}`;
 
   return (
     <div className="flex items-center gap-2">
