@@ -105,7 +105,8 @@ export function UsualMealDialog({
         id: r.id,
         productId: r.productId,
         label: r.label,
-        amount: r.amount?.trim() ? r.amount.trim() : null,
+        amountValue: r.amountValue,
+        amountUnit: r.amountUnit,
         note: r.note?.trim() ? r.note.trim() : null,
       })),
     );

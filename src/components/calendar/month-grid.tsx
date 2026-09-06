@@ -9,9 +9,9 @@ import {
   type DateStr,
   type MonthGrid,
 } from "@/lib/calendar";
-import type { CalendarMark, MarkIcon } from "@/lib/calendar-marks";
+import type { CalendarMark, MarkIcon, MarkKind } from "@/lib/calendar-marks";
 import { shortLabel } from "@/lib/short-name";
-import type { DayMeals } from "@/lib/queries-log";
+import type { DayMeals, UsualMealRow } from "@/lib/queries-log";
 import { cn } from "@/lib/utils";
 
 export interface DayCellData {
@@ -26,11 +26,45 @@ export interface DayCellData {
  * 記号の対応表はこの1箇所だけ。マスとアジェンダで別々に書くと、
  * 片方だけアイコンを差し替えた日に同じ予定が2つの記号で出てしまう。
  */
-const MARK_ICON: Record<MarkIcon, LucideIcon> = {
+export const MARK_ICON: Record<MarkIcon, LucideIcon> = {
   scissors: Scissors,
   stethoscope: Stethoscope,
   pill: Pill,
   syringe: Syringe,
+};
+
+/**
+ * 種類ごとの色と短い名前。**マスと一覧と凡例が同じ表を見る**ので、
+ * 片方だけ色を替えて同じ予定が2通りに見えることが起きない。
+ *
+ * 色は globals.css のトークン（濃い文字 + 淡い面の対）。無彩色のパレットに
+ * 対する2つ目の例外で、--destructive と同じ性格 — 「種類が読めない」を
+ * 記号だけで解こうとして失敗したのでここだけ色を入れる。
+ *
+ * short は mark.label から「の予定」を落としたもの。予定であることは
+ * 破線と薄さが言うので、文字で二度言わない。
+ */
+export const MARK_STYLE: Record<MarkKind, { text: string; bg: string; short: string }> = {
+  trimming: {
+    text: "text-mark-trimming",
+    bg: "bg-mark-trimming-soft",
+    short: "トリミング",
+  },
+  hospital: {
+    text: "text-mark-hospital",
+    bg: "bg-mark-hospital-soft",
+    short: "通院",
+  },
+  heartworm: {
+    text: "text-mark-heartworm",
+    bg: "bg-mark-heartworm-soft",
+    short: "フィラリア",
+  },
+  vaccination: {
+    text: "text-mark-vaccination",
+    bg: "bg-mark-vaccination-soft",
+    short: "ワクチン",
+  },
 };
 
 /**
@@ -43,10 +77,16 @@ export function MonthGridView({
   grid,
   data,
   today,
+  usual,
 }: {
   grid: MonthGrid;
   data: Map<DateStr, DayCellData>;
   today: DateStr;
+  /**
+   * 登録済みの「いつものご飯」。42マスすべてが同じ1つの配列を参照する
+   * （DayCellData に入れて日ごとに複製しない — 中身は日付に依らない）。
+   */
+  usual: UsualMealRow[];
 }) {
   return (
     <div className="hidden overflow-hidden rounded-lg border md:block">
@@ -93,8 +133,8 @@ export function MonthGridView({
                   className={cn(
                     "text-xs tabular-nums",
                     isToday
-                      ? // 反転した丸バッジ。色を使わずに一目で分かる
-                        "inline-flex size-5 items-center justify-center rounded-full bg-foreground font-semibold text-background"
+                      ? // 反転した丸バッジ。差し色のピンクで今日を示す
+                        "inline-flex size-5 items-center justify-center rounded-full bg-brand-pink font-semibold text-background"
                       : [
                           !cell.inMonth && "text-muted-foreground/50",
                           cell.inMonth && cell.weekday === 0 && "text-destructive",
@@ -117,10 +157,9 @@ export function MonthGridView({
                 */}
                 {d?.marks.map((mark) => {
                   const Icon = MARK_ICON[mark.icon];
-                  // 記号だけでは名前にならないので、ラベルを読み上げに回す。
-                  // 薬名・ワクチン名まで足すのは、同じ日に2本接種した記録が
-                  // 「ワクチン」「ワクチン」と同名・同リンクで2つ並び、
-                  // 読み上げでも操作でも区別が付かなくなるため。
+                  const style = MARK_STYLE[mark.kind];
+                  // 読み上げにはラベル（「〜の予定」つき）と薬名・ワクチン名まで。
+                  // 同じ日に2本接種した記録が同名・同リンクで並ぶと区別が付かない
                   const name =
                     mark.detail === null
                       ? mark.label
@@ -132,14 +171,19 @@ export function MonthGridView({
                       aria-label={name}
                       title={name}
                       className={cn(
-                        "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-                        // 予定はまだ起きていない。破線の枠で「記録」と見分ける
+                        // 記号だけでは「通院かワクチンか」が読めなかったので、
+                        // 色つきの小さなチップに種類名まで入れる
+                        "inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] leading-none transition-opacity hover:opacity-80",
+                        style.text,
+                        // 予定はまだ起きていない。破線＋薄い面で「記録」と見分ける
                         // （文字では言わない — ラベルがすでに「〜の予定」）
-                        mark.state === "planned" &&
-                          "border border-dashed border-muted-foreground/60",
+                        mark.state === "planned"
+                          ? "border border-dashed border-current bg-transparent opacity-80"
+                          : style.bg,
                       )}
                     >
-                      <Icon className="size-3" aria-hidden="true" />
+                      <Icon className="size-2.5 shrink-0" aria-hidden="true" />
+                      {style.short}
                     </Link>
                   );
                 })}
@@ -149,6 +193,7 @@ export function MonthGridView({
                 <MealDayDialog
                   draft={d.draft}
                   previousDate={d.previousDate}
+                  usual={usual}
                   triggerVariant="ghost"
                   trigger={
                     <span className="flex w-full flex-col items-start gap-0.5">
@@ -164,7 +209,7 @@ export function MonthGridView({
                               {SLOT_LABEL[slot]}
                             </span>
                             <span className="truncate text-[11px] leading-tight">
-                              {shortLabel(items[0].label, 10)}
+                              {shortLabel(items[0].label, 10, items[0].registeredShortName)}
                               {items.length > 1 && `他${items.length - 1}`}
                             </span>
                           </span>
@@ -198,10 +243,13 @@ export function MonthAgendaView({
   grid,
   data,
   today,
+  usual,
 }: {
   grid: MonthGrid;
   data: Map<DateStr, DayCellData>;
   today: DateStr;
+  /** 登録済みの「いつものご飯」（MonthGridView と同じものを受ける） */
+  usual: UsualMealRow[];
 }) {
   const days = grid.weeks
     .flat()
@@ -243,7 +291,7 @@ export function MonthAgendaView({
               {cell.day}日（{weekdayLabel(cell.weekday)}）
             </span>
             {cell.date === today && (
-              <span className="rounded-full bg-foreground px-2 py-0.5 text-[10px] font-medium text-background">
+              <span className="rounded-full bg-brand-pink px-2 py-0.5 text-[10px] font-medium text-background">
                 今日
               </span>
             )}
@@ -251,6 +299,7 @@ export function MonthAgendaView({
               <MealDayDialog
                 draft={d.draft}
                 previousDate={d.previousDate}
+                usual={usual}
                 triggerVariant="ghost"
                 trigger="編集"
               />
@@ -270,6 +319,7 @@ export function MonthAgendaView({
               <ul className="flex flex-col gap-1">
                 {d.marks.map((mark) => {
                   const Icon = MARK_ICON[mark.icon];
+                  const style = MARK_STYLE[mark.kind];
                   const planned = mark.state === "planned";
                   return (
                     <li key={mark.key}>
@@ -277,12 +327,12 @@ export function MonthAgendaView({
                         href={mark.href}
                         className="-mx-1 flex items-baseline gap-2 rounded-md px-1 py-0.5 transition-colors hover:bg-muted/50"
                       >
+                        {/* マスと同じ色。幅があるので種類名は下の span が出す */}
                         <Icon
                           className={cn(
                             "size-3.5 shrink-0 translate-y-0.5",
-                            planned
-                              ? "text-muted-foreground/70"
-                              : "text-muted-foreground",
+                            style.text,
+                            planned && "opacity-70",
                           )}
                           aria-hidden="true"
                         />
@@ -298,7 +348,8 @@ export function MonthAgendaView({
                         <span
                           className={cn(
                             "shrink-0 text-sm leading-snug",
-                            planned && "text-muted-foreground",
+                            style.text,
+                            planned && "opacity-80",
                           )}
                         >
                           {mark.label}
@@ -330,7 +381,9 @@ export function MonthAgendaView({
                         {SLOT_LABEL[slot]}
                       </span>
                       <span className="flex-1 leading-snug">
-                        {items.map((i) => shortLabel(i.label, 16)).join("、")}
+                        {items
+                          .map((i) => shortLabel(i.label, 16, i.registeredShortName))
+                          .join("、")}
                       </span>
                     </li>
                   );

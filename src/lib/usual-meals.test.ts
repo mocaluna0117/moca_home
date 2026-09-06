@@ -14,7 +14,16 @@ const item = (
   slot: MealSlot,
   label: string,
   extra: Partial<UsualItem> = {},
-): UsualItem => ({ slot, productId: null, label, amount: null, note: null, ...extra });
+): UsualItem => ({
+  slot,
+  productId: null,
+  label,
+  amountValue: null,
+  amountUnit: null,
+  amount: null,
+  note: null,
+  ...extra,
+});
 
 /** slot にゴミが入った行（DB を直接いじった・後から値が増えた場合） */
 const junkSlot = (slot: string, label: string): UsualItem => ({
@@ -100,7 +109,7 @@ describe("groupUsualBySlot — 両方のキーが必ずある", () => {
   it("分量とメモはそのまま持ち越す（値を作り直さない）", () => {
     const row = item("evening", "ドライフード", {
       productId: 12,
-      amount: "50g",
+      amountValue: 50, amountUnit: "g",
       note: "半分に折る",
     });
     const grouped = groupUsualBySlot([row]);
@@ -115,7 +124,7 @@ describe("planUsualApply — 0件のスロットは落とし、常に朝 → 夜
 
   it("朝だけ登録 → 朝の1件だけ（夜は 0件なので含めない）", () => {
     const plan = planUsualApply([
-      item("morning", "ドライフード", { amount: "50g" }),
+      item("morning", "ドライフード", { amountValue: 50, amountUnit: "g" }),
       item("morning", "ささみ"),
     ]);
     assert.deepEqual(shape(plan), ["morning: ドライフード, ささみ"]);
@@ -177,7 +186,7 @@ describe("planUsualApply — 0件のスロットは落とし、常に朝 → 夜
   it("品目は登録の行そのまま（分量・メモ・productId を落とさない）", () => {
     const row = item("morning", "ドライフード", {
       productId: 7,
-      amount: "50g",
+      amountValue: 50, amountUnit: "g",
       note: "ふやかす",
     });
     const plan = planUsualApply([row]);

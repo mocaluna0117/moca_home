@@ -38,6 +38,20 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  /* アプリのアイコン（白い肉球にピンク）と揃えた差し色。--destructive に続く
+     2つ目の有彩色で、ホームの装飾とヘッダーのアクティブタブに使う */
+  --color-brand-pink: var(--brand-pink);
+  --color-brand-pink-soft: var(--brand-pink-soft);
+  /* カレンダーの印。種類ごとに色を割り当てて、記号だけでは読めなかった
+     「これは通院？ワクチン？」を色と文字の両方で言う */
+  --color-mark-trimming: var(--mark-trimming);
+  --color-mark-trimming-soft: var(--mark-trimming-soft);
+  --color-mark-hospital: var(--mark-hospital);
+  --color-mark-hospital-soft: var(--mark-hospital-soft);
+  --color-mark-heartworm: var(--mark-heartworm);
+  --color-mark-heartworm-soft: var(--mark-heartworm-soft);
+  --color-mark-vaccination: var(--mark-vaccination);
+  --color-mark-vaccination-soft: var(--mark-vaccination-soft);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -81,6 +95,26 @@
   --accent: oklch(0.968 0.006 83);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  /*
+   * 差し色のピンク。アプリのアイコン（#f43f76）と同じ色相で、
+   * -soft は同じ色相のごく淡い面。**面には -soft、文字と線には濃いほうを使う**
+   * （淡いほうに文字を置くとコントラストが足りない）。
+   */
+  --brand-pink: oklch(0.64 0.22 8);
+  --brand-pink-soft: oklch(0.95 0.035 8);
+  /*
+   * カレンダーの印の4色。トリミングはピンクを共有する（アプリの差し色と
+   * 2つのピンクに分かれないように）。どれも「濃い文字 + 淡い面」の対で、
+   * 面の上に同系の濃い文字を置く。予定は破線と薄さで表すので色は変えない。
+   */
+  --mark-trimming: var(--brand-pink);
+  --mark-trimming-soft: var(--brand-pink-soft);
+  --mark-hospital: oklch(0.52 0.16 250);
+  --mark-hospital-soft: oklch(0.95 0.03 250);
+  --mark-heartworm: oklch(0.5 0.13 152);
+  --mark-heartworm-soft: oklch(0.95 0.035 152);
+  --mark-vaccination: oklch(0.52 0.18 300);
+  --mark-vaccination-soft: oklch(0.95 0.03 300);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -116,6 +150,17 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  /* 到達しない（ThemeProvider が未設置）が、他の全トークンと同じく対で置く */
+  --brand-pink: oklch(0.72 0.2 8);
+  --brand-pink-soft: oklch(0.28 0.06 8);
+  --mark-trimming: var(--brand-pink);
+  --mark-trimming-soft: var(--brand-pink-soft);
+  --mark-hospital: oklch(0.72 0.14 250);
+  --mark-hospital-soft: oklch(0.28 0.05 250);
+  --mark-heartworm: oklch(0.72 0.13 152);
+  --mark-heartworm-soft: oklch(0.28 0.05 152);
+  --mark-vaccination: oklch(0.74 0.15 300);
+  --mark-vaccination-soft: oklch(0.28 0.05 300);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);

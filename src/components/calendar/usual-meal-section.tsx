@@ -6,12 +6,17 @@ import { ProductName } from "@/components/product-name";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardHeader } from "@/components/ui/card";
 import { SLOT_LABEL_LONG } from "@/lib/calendar";
+import { formatMealAmount } from "@/lib/meal-amount";
 import type { UsualMealRow } from "@/lib/queries-log";
 import { USUAL_SLOTS, type UsualSlot } from "@/lib/usual-meals";
 
-/** 分量とメモ。片方しか無くても「 ・ 」が浮かない（home.ts と同じ繋ぎ方） */
+/**
+ * 分量とメモ。片方しか無くても「 ・ 」が浮かない（home.ts と同じ繋ぎ方）。
+ * 分量は必ず formatMealAmount を通す — 数値と単位に分ける前に登録した行は
+ * 自由入力の写しにしか値が無く、直接読むとそこだけ空欄になる。
+ */
 function meta(row: UsualMealRow): string | null {
-  const parts = [row.amount, row.note].filter(
+  const parts = [formatMealAmount(row), row.note].filter(
     (p): p is string => p !== null && p !== "",
   );
   return parts.length === 0 ? null : parts.join(" ・ ");
@@ -105,6 +110,8 @@ export function UsualMealSection({
                           id: it.id,
                           productId: it.productId,
                           label: it.label,
+                          amountValue: it.amountValue,
+                          amountUnit: it.amountUnit,
                           amount: it.amount,
                           note: it.note,
                           imageUrl: it.imageUrl,

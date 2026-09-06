@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, CopyPlus } from "lucide-react";
+import { CalendarDays, CopyPlus, Repeat } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -30,6 +30,8 @@ import {
 } from "@/lib/calendar";
 import { copyMealDay, saveMealSlot, type MealEntryInput } from "@/lib/actions-log";
 import { callAction } from "@/lib/call-action";
+import type { UsualMealRow } from "@/lib/queries-log";
+import { isUsualSlot } from "@/lib/usual-meals";
 
 /** RSC から渡ってくる、その日の記録（シリアライズ可能な形） */
 export interface DayDraft {
@@ -74,6 +76,7 @@ function toKnownIds(draft: DayDraft): Record<MealSlot, number[]> {
 export function MealDayDialog({
   draft,
   previousDate,
+  usual,
   initialSlot,
   trigger,
   triggerVariant = "outline",
@@ -82,6 +85,12 @@ export function MealDayDialog({
   draft: DayDraft;
   /** 「昨日をコピー」の対象。記録のある直近の日 */
   previousDate: DateStr | null;
+  /**
+   * 登録済みの「いつものご飯」。朝・夜のセクションに「追加」ボタンを出す
+   * ためだけに使う。毎朝の cron（applyUsualMeals）とは別の道で、こちらは
+   * **どの日にも手で足せる**（cron は今日の空きスロットにしか入れない）。
+   */
+  usual: UsualMealRow[];
   initialSlot?: MealSlot;
   trigger: React.ReactNode;
   triggerVariant?: "default" | "outline" | "ghost";
@@ -116,7 +125,8 @@ export function MealDayDialog({
           id: r.id,
           productId: r.productId,
           label: r.label,
-          amount: r.amount?.trim() ? r.amount.trim() : null,
+          amountValue: r.amountValue,
+          amountUnit: r.amountUnit,
           note: r.note?.trim() ? r.note.trim() : null,
         }));
         const res = await callAction(() =>
@@ -130,6 +140,35 @@ export function MealDayDialog({
       toast.success("記録しました");
       setOpen(false);
     });
+  }
+
+  /**
+   * 登録した「いつものご飯」をこのスロットに積む。
+   *
+   * 重複は見ない。同じものを2回押せば2行になるが、要らない行はその場の
+   * ゴミ箱で消せる。「もう入っているか」を名前で判定すると、わざと2袋
+   * あげた日の2行目まで弾いてしまう。保存されるのは「保存」を押したときだけ。
+   */
+  function addUsual(slot: MealSlot) {
+    const items = usual.filter((u) => u.slot === slot);
+    if (items.length === 0) return;
+    setSlots((s) => ({
+      ...s,
+      [slot]: [
+        ...s[slot],
+        ...items.map((u) =>
+          toRow({
+            productId: u.productId,
+            label: u.label,
+            amountValue: u.amountValue,
+            amountUnit: u.amountUnit,
+            amount: u.amount,
+            note: u.note,
+            imageUrl: u.imageUrl,
+          }),
+        ),
+      ],
+    }));
   }
 
   function handleCopyPrevious() {
@@ -174,11 +213,27 @@ export function MealDayDialog({
                   : "rounded-lg border p-3"
               }
             >
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
                 <h3 className="font-heading text-sm font-medium">{SLOT_LABEL_LONG[slot]}</h3>
                 <span className="text-xs text-muted-foreground tabular-nums">
                   {slots[slot].length}品
                 </span>
+                {/*
+                  おやつには出さない（USUAL_SLOTS は朝と夜だけ）。登録が
+                  無いスロットにも出さない — 押しても何も起きないボタンを
+                  置かないため。
+                */}
+                {isUsualSlot(slot) && usual.some((u) => u.slot === slot) && (
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    className="ml-auto"
+                    onClick={() => addUsual(slot)}
+                  >
+                    <Repeat aria-hidden="true" />
+                    いつもの{SLOT_LABEL_LONG[slot]}を追加
+                  </Button>
+                )}
               </div>
 
               {slots[slot].length === 0 && (
@@ -224,14 +279,17 @@ export function MealDayDialog({
 export function TodayButton({
   draft,
   previousDate,
+  usual,
 }: {
   draft: DayDraft;
   previousDate: DateStr | null;
+  usual: UsualMealRow[];
 }) {
   return (
     <MealDayDialog
       draft={draft}
       previousDate={previousDate}
+      usual={usual}
       triggerVariant="default"
       trigger={
         <>

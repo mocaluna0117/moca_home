@@ -20,9 +20,11 @@ import { MedicineSelect, type MedicineOption } from "@/components/care/medicine-
 import { deleteHeartwormDose, recordHeartwormDose } from "@/lib/actions-care";
 import { callAction } from "@/lib/call-action";
 import type { DateStr } from "@/lib/calendar";
-import { formatDate } from "@/lib/format";
 
-/** 1件の予定に「飲ませた」を記録する。日付を空にすれば未実施に戻せる。 */
+/**
+ * 1件の予定を編集する。予定日そのものを動かせて、「飲ませた」も記録できる。
+ * 飲ませた日を空にすれば未実施に戻せる。
+ */
 export function HeartwormRecordDialog({
   dose,
   today,
@@ -41,6 +43,7 @@ export function HeartwormRecordDialog({
   medicines: MedicineOption[];
 }) {
   const [open, setOpen] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState(dose.scheduledDate);
   const [givenDate, setGivenDate] = useState(dose.givenDate ?? "");
   const [medicineId, setMedicineId] = useState<number | null>(dose.medicineId);
   const [note, setNote] = useState(dose.note ?? "");
@@ -51,6 +54,7 @@ export function HeartwormRecordDialog({
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (next) {
+      setScheduledDate(dose.scheduledDate);
       // 未実施なら「今日飲ませた」がいちばん多いので、初期値を今日にする
       setGivenDate(dose.givenDate ?? today);
       setMedicineId(dose.medicineId);
@@ -63,6 +67,7 @@ export function HeartwormRecordDialog({
       const res = await callAction(() =>
         recordHeartwormDose({
           id: dose.id,
+          scheduledDate,
           givenDate: nextGiven,
           medicineId,
           note: note.trim() || null,
@@ -105,13 +110,26 @@ export function HeartwormRecordDialog({
       />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{formatDate(dose.scheduledDate)}の投薬</DialogTitle>
+          {/* 予定日は編集できるので、見出しに焼き込まない（直した瞬間に嘘になる） */}
+          <DialogTitle>フィラリアの予定</DialogTitle>
           <DialogDescription>
-            飲ませた日を記録すると、この予定のリマインドは止まります。
+            予定日はあとから動かせます。飲ませた日を記録すると、この予定の
+            リマインドは止まります。
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">予定日</span>
+            {/* value が YYYY-MM-DD でスキーマと同形 — 変換を挟まない */}
+            <Input
+              type="date"
+              value={scheduledDate}
+              onChange={(e) => setScheduledDate(e.target.value)}
+              required
+            />
+          </label>
+
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">飲ませた日</span>
             <Input
@@ -162,9 +180,14 @@ export function HeartwormRecordDialog({
 
         <DialogFooter className="gap-2">
           <DialogClose render={<Button variant="ghost">キャンセル</Button>} />
+          {/*
+            飲ませた日が空でも保存できる。予定日だけを動かしたい日が普通に
+            あり、以前はそのために「飲ませた」を一度付ける必要があった。
+            空 = 未実施として保存する（save(null) と同じ意味）。
+          */}
           <Button
-            disabled={isPending || givenDate === ""}
-            onClick={() => save(givenDate)}
+            disabled={isPending || scheduledDate === ""}
+            onClick={() => save(givenDate === "" ? null : givenDate)}
           >
             {isPending ? "保存中…" : "保存"}
           </Button>

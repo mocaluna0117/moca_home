@@ -7,11 +7,25 @@ import { ProductSearchDialog } from "@/components/product-search-dialog";
 import { ProductName } from "@/components/product-name";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  MEAL_AMOUNT_UNITS,
+  MAX_AMOUNT_VALUE,
+  formatMealAmount,
+} from "@/lib/meal-amount";
+import { cn } from "@/lib/utils";
 
 export interface DraftRow {
   id?: number;
   productId: number | null;
   label: string;
+  /** 分量の数値。単位とセット（src/lib/meal-amount.ts） */
+  amountValue: number | null;
+  amountUnit: string | null;
+  /**
+   * 分ける前に入れた自由入力（"少なめ" など）。**入力欄は無い。**
+   * 古い記録を開いたときに「前はこう書いてあった」と見せるためだけに運ぶ。
+   * 保存すると数値と単位に置き換わり、ここは消える。
+   */
   amount: string | null;
   note: string | null;
   imageUrl: string | null;
@@ -46,6 +60,8 @@ export function emptyRow(): RowState {
     key: nextKey++,
     productId: null,
     label: "",
+    amountValue: null,
+    amountUnit: null,
     amount: null,
     note: null,
     imageUrl: null,
@@ -178,13 +194,47 @@ export function MealItemRows({
             )}
 
             <div className="flex items-center gap-2">
+              {/*
+                分量は数値と単位に分ける。自由入力だった頃は「50g」「50ｇ」
+                「50グラム」が混ざって量として比べられなかった。
+                type="number" にすると電話で数字のキーパッドが出る。
+              */}
               <Input
-                value={row.amount ?? ""}
-                onChange={(e) => patch(row.key, { amount: e.target.value || null })}
-                placeholder="分量（例: 50g）"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={MAX_AMOUNT_VALUE}
+                step={1}
+                value={row.amountValue ?? ""}
+                onChange={(e) =>
+                  patch(row.key, {
+                    amountValue: e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+                placeholder="分量"
                 aria-label="分量"
-                className="w-32"
+                className="w-20 tabular-nums"
               />
+              {/* 候補は8つで検索が要らない。ライブラリを増やさずネイティブの
+                  select にする（medicine-select.tsx と同じ判断・同じ見た目） */}
+              <select
+                value={row.amountUnit ?? ""}
+                onChange={(e) =>
+                  patch(row.key, { amountUnit: e.target.value === "" ? null : e.target.value })
+                }
+                aria-label="分量の単位"
+                className={cn(
+                  "h-8 w-20 shrink-0 rounded-lg border border-input bg-transparent px-2 py-1 text-base outline-none",
+                  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm",
+                )}
+              >
+                <option value="">単位</option>
+                {MEAL_AMOUNT_UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
               <Input
                 value={row.note ?? ""}
                 onChange={(e) => patch(row.key, { note: e.target.value || null })}
@@ -201,6 +251,22 @@ export function MealItemRows({
                 <Trash2 />
               </Button>
             </div>
+
+            {/*
+              数値と単位に分ける前に入れた分量。保存するとこの控えは消えるので、
+              消える前に何と書いてあったかを見せる（「少なめ」のように数値に
+              できない記録もあり、黙って捨てると気づけない）。
+            */}
+            {row.amountValue === null &&
+              formatMealAmount({
+                amountValue: row.amountValue,
+                amountUnit: row.amountUnit,
+                amount: row.amount,
+              }) !== null && (
+                <p className="text-xs text-muted-foreground">
+                  以前の分量: {row.amount}（保存すると上の数値と単位に置き換わります）
+                </p>
+              )}
           </div>
         ))}
       </div>

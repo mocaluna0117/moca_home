@@ -26,6 +26,9 @@ const PUSH_TABLES = [
   "vaccinations",
   "vaccination_photos",
   "product_favorites",
+  // 商品の「短い名前」。忘れると本番だけ /calendar と / が
+  // no such table: product_short_names で落ちる（ごはんの行を描くのに読む）
+  "product_short_names",
   "care_visits",
   "care_visit_items",
   // いつも行くお店・病院とトリミングのコース。忘れると本番だけ /care が

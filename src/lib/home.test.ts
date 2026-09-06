@@ -231,7 +231,7 @@ describe("buildHomeSchedule — 何も無い日", () => {
     const { rows } = build({});
     assert.deepEqual(
       rows.map((r) => r.href),
-      ["/care?tab=heartworm", "/calendar?tab=vaccination", "/care"],
+      ["/heartworm", "/vaccinations", "/trimming"],
     );
   });
 });
@@ -520,7 +520,7 @@ describe("buildHomeSchedule — トリミングの予約", () => {
     assert.equal(row.relative, "あと10日");
     assert.equal(row.fallback, null);
     assert.equal(row.detail, "14:00 ・ サロン◯◯");
-    assert.equal(row.href, "/care");
+    assert.equal(row.href, "/trimming");
   });
 
   it("時間もお店も無い予約は3行目を出さない（「 ・ 」を浮かせない）", () => {

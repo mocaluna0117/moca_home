@@ -4,6 +4,12 @@ import { eq, gte, inArray, isNull, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { actionError } from "@/lib/action-error";
+import {
+  PHOTO_RULES,
+  deleteBlobs,
+  isBlobUrl,
+  parseBlobPath,
+} from "@/lib/blob";
 import { db } from "@/lib/db";
 import {
   careCourses,
@@ -35,7 +41,12 @@ const MAX_NOTE = 500;
 const PLACE_NOUN: Record<CareKind, string> = { trimming: "お店", hospital: "動物病院" };
 
 function revalidateCare(): void {
-  revalidatePath("/care");
+  // ケアの記録は種類ごとに別ページになった。どれが変わったかで出し分けず
+  // 全部投げる（revalidatePath は冪等で安い。出し分けは書き忘れる側に倒れる）
+  revalidatePath("/trimming");
+  revalidatePath("/hospital");
+  revalidatePath("/heartworm");
+  revalidatePath("/medicines");
   revalidatePath("/calendar");
   // ホームの緊急バンドと「次の予定」がフィラリアとトリミングを読むようになった。
   // ここを足さないと「飲ませた」を記録した直後のホームだけ古い予定を出し続ける。
@@ -442,6 +453,147 @@ export async function deleteMedicine(id: number): Promise<ActionResult> {
   }
 }
 
+// ------------------------------------------------------------- 薬の写真
+//
+// 3つ目の用途なので、**専用の Action を足す**（既存の証明書用・プロフィール用の
+// 条件を緩めない）。緩めると、参照チェックが「写真を指しうる全テーブルの
+// 列挙」になり、1つ書き忘れた瞬間に生きた写真が消える
+// （src/lib/actions-log.ts の discardUnattachedPhoto のコメント参照）。
+
+export interface MedicinePhotoInput {
+  medicineId: number;
+  /** 本物のアップロード由来であることの検証にだけ使う（列には保存しない） */
+  url: string;
+  /** Blob の削除キー＝表示経路の鍵。これだけを保存する */
+  pathname: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+}
+
+/**
+ * 薬にパッケージ写真を付ける（1薬1枚。差し替えると古い写真は消す）。
+ *
+ * アップロードはブラウザ → Blob の直行でサーバがバイト列を見ないので、
+ * クライアントが渡すメタデータの検証はここが唯一の関門になる。
+ * 順番は setDogPhoto と同じ: url → 保存先の種類 → 形式 → サイズ → 行の存在。
+ */
+export async function setMedicinePhoto(
+  meta: MedicinePhotoInput,
+): Promise<ActionResult> {
+  try {
+    if (!isBlobUrl(meta.url)) return { ok: false, error: "写真のURLが不正です" };
+    if (parseBlobPath(meta.pathname)?.kind !== "medicine") {
+      return { ok: false, error: "写真の保存先が不正です" };
+    }
+    const rules = PHOTO_RULES.medicine;
+    if (meta.contentType && !rules.types.includes(meta.contentType)) {
+      return { ok: false, error: "対応していない画像形式です" };
+    }
+    if (meta.sizeBytes !== null && (meta.sizeBytes < 1 || meta.sizeBytes > rules.maxBytes)) {
+      return { ok: false, error: "画像サイズが大きすぎます" };
+    }
+
+    const existing = await db
+      .select({ pathname: medicines.photoPathname })
+      .from(medicines)
+      .where(eq(medicines.id, meta.medicineId))
+      .get();
+    if (!existing) return { ok: false, error: "薬が見つかりません" };
+
+    await db
+      .update(medicines)
+      .set({
+        photoPathname: meta.pathname,
+        photoContentType: meta.contentType,
+        photoSizeBytes: meta.sizeBytes,
+        // ?v= のキャッシュ破りの種。差し替えたことがブラウザに伝わる唯一の値
+        photoUpdatedAt: now(),
+        updatedAt: now(),
+      })
+      .where(eq(medicines.id, meta.medicineId))
+      .run();
+
+    // ここから best-effort（DB は既にコミット済み）。同じ pathname は消さない —
+    // 再送で同じ実体を指したときに、いま上げた写真を落としてしまう
+    if (existing.pathname && existing.pathname !== meta.pathname) {
+      await deleteBlobs([existing.pathname]);
+    }
+    revalidateCare();
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: actionError(err, "写真の保存に失敗しました"),
+    };
+  }
+}
+
+/** 写真を外す。すでに無ければ何もしない（何度押しても同じ結果）。 */
+export async function removeMedicinePhoto(medicineId: number): Promise<ActionResult> {
+  try {
+    const existing = await db
+      .select({ pathname: medicines.photoPathname })
+      .from(medicines)
+      .where(eq(medicines.id, medicineId))
+      .get();
+    if (!existing) return { ok: false, error: "薬が見つかりません" };
+    if (!existing.pathname) return { ok: true };
+
+    await db
+      .update(medicines)
+      .set({
+        photoPathname: null,
+        photoContentType: null,
+        photoSizeBytes: null,
+        photoUpdatedAt: null,
+        updatedAt: now(),
+      })
+      .where(eq(medicines.id, medicineId))
+      .run();
+
+    await deleteBlobs([existing.pathname]);
+    revalidateCare();
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: actionError(err, "写真の削除に失敗しました"),
+    };
+  }
+}
+
+/**
+ * 上げたが紐づけに失敗した写真を捨てる（孤児の掃除）。
+ *
+ * **薬専用。** 参照を確かめるのも medicines だけで、他の用途も受けられる
+ * ように条件を緩めない（証明書用・プロフィール用にもそれぞれ専用がある）。
+ */
+export async function discardUnattachedMedicinePhoto(
+  pathname: string,
+): Promise<ActionResult> {
+  try {
+    if (typeof pathname !== "string" || parseBlobPath(pathname)?.kind !== "medicine") {
+      return { ok: false, error: "写真の保存先が不正です" };
+    }
+    // DB が参照している pathname は絶対に消さない。クライアント由来の値を
+    // 受け取るので、この1本が「表示中の写真を消させない」保証になる
+    const linked = await db
+      .select({ id: medicines.id })
+      .from(medicines)
+      .where(eq(medicines.photoPathname, pathname))
+      .get();
+    if (linked) return { ok: false, error: "この写真は薬に紐づいています" };
+
+    await deleteBlobs([pathname]);
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: actionError(err, "写真の削除に失敗しました"),
+    };
+  }
+}
+
 export interface HeartwormPlanInput {
   startMonth: string;
   endMonth: string;
@@ -526,6 +678,8 @@ export async function generateHeartwormSchedule(
 
 export interface HeartwormRecordInput {
   id: number;
+  /** 予定日そのもの。あとから動かせる（一括生成した日をずらす手段） */
+  scheduledDate: string;
   /** null にすると「まだ飲ませていない」に戻す */
   givenDate: string | null;
   /** 登録済みの薬。null なら未選択 */
@@ -533,11 +687,21 @@ export interface HeartwormRecordInput {
   note: string | null;
 }
 
-/** 飲ませた記録。日付を null にすると未実施に戻せる */
+/**
+ * 1件の予定を編集する。予定日・飲ませた日・薬・メモを1回で保存し、
+ * 飲ませた日を null にすると未実施に戻せる。
+ *
+ * **予定日は一意**（heartworm_doses_scheduled_date_idx）。同じ日に2件を
+ * 作らないためのもので、素の UPDATE で他の予定と同じ日に動かすと例外になる。
+ * saveCarePlace / saveMedicine と同じく、先に引いて日本語で返す。
+ */
 export async function recordHeartwormDose(
   input: HeartwormRecordInput,
 ): Promise<ActionResult> {
   try {
+    if (!isDateOnly(input.scheduledDate)) {
+      return { ok: false, error: "予定日の形式が正しくありません" };
+    }
     if (input.givenDate !== null && !isDateOnly(input.givenDate)) {
       return { ok: false, error: "日付の形式が正しくありません" };
     }
@@ -547,6 +711,15 @@ export async function recordHeartwormDose(
       .where(eq(heartwormDoses.id, input.id))
       .get();
     if (!existing) return { ok: false, error: "予定が見つかりません" };
+
+    const duplicate = await db
+      .select({ id: heartwormDoses.id })
+      .from(heartwormDoses)
+      .where(eq(heartwormDoses.scheduledDate, input.scheduledDate))
+      .get();
+    if (duplicate && duplicate.id !== input.id) {
+      return { ok: false, error: "その日にはすでに別の予定があります" };
+    }
 
     const medicine =
       input.medicineId === null
@@ -563,6 +736,7 @@ export async function recordHeartwormDose(
     await db
       .update(heartwormDoses)
       .set({
+        scheduledDate: input.scheduledDate,
         givenDate: input.givenDate,
         medicineId: medicine?.id ?? null,
         label: medicine?.name ?? null,

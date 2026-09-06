@@ -93,7 +93,7 @@ export function ProfileFrame({
             // 写真が無い・出せない・落ちた、のどれでも同じ丸。高さが変わらないので
             // ヒーローのレイアウトは崩れない
             <span className="flex size-full items-center justify-center rounded-full border-2 border-dashed bg-muted/30 text-muted-foreground">
-              <PawPrint className="size-8 sm:size-10" aria-hidden="true" />
+              <PawPrint className="size-8 text-brand-pink/70 sm:size-10" aria-hidden="true" />
             </span>
           )}
           {/* 行があるときだけの小さな鉛筆。行が無いときは下の「作る」ボタンが

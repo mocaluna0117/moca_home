@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, HeartPulse, ShoppingBag, Star } from "lucide-react";
+import { CalendarDays, ShoppingBag, Star, UtensilsCrossed } from "lucide-react";
 
 /**
  * 【5】ほかのページ。**データを1件も取らない**ので、DB が空の初回起動でも
@@ -24,10 +24,10 @@ const CARDS = [
     Icon: CalendarDays,
   },
   {
-    href: "/care",
-    label: "ケア",
-    description: "フィラリア・トリミング・通院",
-    Icon: HeartPulse,
+    href: "/meals",
+    label: "ごはん",
+    description: "いつものご飯と食べたもの",
+    Icon: UtensilsCrossed,
   },
   {
     href: "/favorites",
@@ -48,7 +48,7 @@ export function SectionCards() {
             href={c.href}
             className="flex h-full flex-col gap-1 rounded-xl border bg-card p-4 transition-colors hover:bg-muted/30"
           >
-            <c.Icon className="size-5 text-muted-foreground" aria-hidden="true" />
+            <c.Icon className="size-5 text-brand-pink" aria-hidden="true" />
             <span className="font-heading text-sm">{c.label}</span>
             <span className="text-xs text-muted-foreground">{c.description}</span>
           </Link>

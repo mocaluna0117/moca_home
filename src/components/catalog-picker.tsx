@@ -265,7 +265,7 @@ export function ProductPreview({
                   alt=""
                   fill
                   sizes="112px"
-                  className="object-cover"
+                  className="object-contain"
                   unoptimized
                 />
               ) : (
@@ -317,7 +317,7 @@ export function ProductPreview({
                     alt=""
                     fill
                     sizes="56px"
-                    className="object-cover"
+                    className="object-contain"
                     unoptimized
                   />
                 </span>
@@ -367,7 +367,7 @@ export function Thumb({ src, alt }: { src: string | null; alt: string }) {
   }
   return (
     <span className="relative size-8 shrink-0 overflow-hidden rounded border bg-muted">
-      <Image src={src} alt={alt} fill sizes="32px" className="object-cover" unoptimized />
+      <Image src={src} alt={alt} fill sizes="32px" className="object-contain" unoptimized />
     </span>
   );
 }

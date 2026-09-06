@@ -1,4 +1,4 @@
-import { CalendarDays, Sparkles, UtensilsCrossed } from "lucide-react";
+import { CalendarDays, Sparkles } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -6,26 +6,11 @@ import {
   MonthGridView,
   type DayCellData,
 } from "@/components/calendar/month-grid";
+import { MarkLegend } from "@/components/calendar/mark-legend";
 import { MealDayDialog, type DayDraft } from "@/components/calendar/meal-day-dialog";
 import { MonthNav } from "@/components/calendar/month-nav";
-import { UsualMealSection } from "@/components/calendar/usual-meal-section";
-import { VaccinationSection } from "@/components/calendar/vaccination-section";
-import { FavoriteButton } from "@/components/favorite-button";
-import { ProductName } from "@/components/product-name";
-import { SegmentedNav } from "@/components/segmented-nav";
 import { Badge } from "@/components/ui/badge";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { aiProvider } from "@/lib/ai";
-import { isBlobConfigured } from "@/lib/blob";
-import {
-  SLOT_LABEL,
   buildMonthGrid,
   monthRange,
   parseYearMonth,
@@ -38,7 +23,6 @@ import { formatDate, nowJstIso } from "@/lib/format";
 import { shortLabel } from "@/lib/short-name";
 import { getCareDates, getHeartwormDoses } from "@/lib/queries-care";
 import {
-  getFoodHistory,
   getMealDay,
   getMealMonth,
   getPreviousSlot,
@@ -46,14 +30,10 @@ import {
   getUsualMeals,
   getVaccinationDates,
   getVaccinationSchedule,
-  getVaccinations,
   type DayMeals,
 } from "@/lib/queries-log";
-import { getFavoriteProductIds } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
-
-type Tab = "log" | "usual" | "foods" | "vaccination";
 
 function toDraft(date: DateStr, meals: DayMeals | null): DayDraft {
   const map = (rows: DayMeals["morning"]) =>
@@ -61,6 +41,8 @@ function toDraft(date: DateStr, meals: DayMeals | null): DayDraft {
       id: r.id,
       productId: r.productId,
       label: r.label,
+      amountValue: r.amountValue,
+      amountUnit: r.amountUnit,
       amount: r.amount,
       note: r.note,
       imageUrl: r.imageUrl,
@@ -73,93 +55,50 @@ function toDraft(date: DateStr, meals: DayMeals | null): DayDraft {
   };
 }
 
+/**
+ * カレンダー。**月グリッド1枚だけ**のページ。
+ *
+ * かつてここに4つのタブ（記録・いつもの・食べたもの・接種記録）が乗って
+ * いたが、いつもの／食べたものは「ごはん」(/meals)、接種記録は
+ * 「接種記録」(/vaccinations) に移した。どれもヘッダーから直接開けるように
+ * なり、このページは「その日に何があったか」だけを答える。
+ */
 export default async function CalendarPage({ searchParams }: PageProps<"/calendar">) {
   const params = await searchParams;
   const rawM = Array.isArray(params.m) ? params.m[0] : params.m;
-  const rawTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
 
   const today = todayJst(nowJstIso());
   const thisMonth = yearMonthOf(today);
   // 不正な ?m= は 404 にせず今月へフォールバックする
   const ym = parseYearMonth(rawM) ?? thisMonth;
-  const tab: Tab =
-    rawTab === "usual" || rawTab === "foods" || rawTab === "vaccination"
-      ? rawTab
-      : "log";
-
   const grid = buildMonthGrid(ym)!;
-
-  const tabs = [
-    { value: "log", label: "記録", href: `/calendar?m=${ym}` },
-    // 見出しは「いつものご飯」。タブは4本目なので幅の都合で「いつもの」
-    { value: "usual", label: "いつもの", href: `/calendar?m=${ym}&tab=usual` },
-    { value: "foods", label: "食べたもの", href: `/calendar?m=${ym}&tab=foods` },
-    {
-      value: "vaccination",
-      label: "接種記録",
-      href: `/calendar?m=${ym}&tab=vaccination`,
-    },
-  ];
-
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <MonthNav grid={grid} tab={tab} thisMonth={thisMonth} />
-        {/*
-          タブが4本になり、320px では横に並びきらない。ヘッダーの TopNav と
-          同じ扱いで、この行だけ横スクロールを許してページ全体が横に動くのを
-          防ぐ（sm 以上は今までどおり月ナビと同じ行に収まる）。
-        */}
-        <div className="overflow-x-auto sm:overflow-x-visible">
-          <SegmentedNav items={tabs} current={tab} />
-        </div>
-      </div>
-
-      {tab === "log" && <LogTab ym={ym} grid={grid} today={today} />}
-      {tab === "usual" && <UsualTab today={today} />}
-      {tab === "foods" && <FoodsTab />}
-      {tab === "vaccination" && (
-        <VaccinationSection
-          records={await getVaccinations()}
-          blobEnabled={isBlobConfigured()}
-          aiProvider={aiProvider()}
-          today={today}
-        />
-      )}
-    </div>
-  );
-}
-
-async function LogTab({
-  ym,
-  grid,
-  today,
-}: {
-  ym: string;
-  grid: NonNullable<ReturnType<typeof buildMonthGrid>>;
-  today: DateStr;
-}) {
   // ym は parseYearMonth を通っているので monthRange も必ず返る
-  // （上の buildMonthGrid(ym)! と同じ理由）
   const range = monthRange(ym)!;
 
   /*
     印の材料はすべて既存のクエリから引く。**カレンダー専用のクエリは足さない**
     — 「その日に何があったか」の答えが2箇所に増えると、片方だけ直る日が来る。
 
-    月グリッドを描くのはこのタブだけなので、印のための3本（来店日・フィラリア・
-    ワクチンの予定）も食べたもの／接種記録タブには乗らない。追加の await には
-    せず、既にあった Promise.all に足して1往復のままにする。
+    getUsualMeals はダイアログの「いつものご飯を追加」に渡すぶん。登録は
+    高々20行で、42マスすべてが同じ1つの配列を参照する。
   */
-  const [month, started, vaccinationDates, careDates, doses, vaccinationSchedule] =
-    await Promise.all([
-      getMealMonth(ym),
-      getStartedInMonth(ym),
-      getVaccinationDates(ym),
-      getCareDates(range.start, range.endExclusive),
-      getHeartwormDoses(),
-      getVaccinationSchedule(),
-    ]);
+  const [
+    month,
+    started,
+    vaccinationDates,
+    careDates,
+    doses,
+    vaccinationSchedule,
+    usual,
+  ] = await Promise.all([
+    getMealMonth(ym),
+    getStartedInMonth(ym),
+    getVaccinationDates(ym),
+    getCareDates(range.start, range.endExclusive),
+    getHeartwormDoses(),
+    getVaccinationSchedule(),
+    getUsualMeals(),
+  ]);
 
   // どの日に何の印を出すかは buildCalendarMarks が決めきる（表示側は並べるだけ）。
   // today を渡すのは、トリミング・通院の今日より先の日付（予約）を予定の印にするため
@@ -201,11 +140,14 @@ async function LogTab({
   const todayPrev = await getPreviousSlot(today, "morning");
 
   return (
-    <>
+    <div className="flex flex-col gap-5">
+      <MonthNav grid={grid} thisMonth={thisMonth} />
+
       <div className="flex flex-wrap items-center gap-2">
         <MealDayDialog
           draft={toDraft(today, todayMeals.total > 0 ? todayMeals : null)}
           previousDate={todayPrev?.date ?? null}
+          usual={usual}
           triggerVariant="default"
           trigger={
             <>
@@ -222,7 +164,7 @@ async function LogTab({
       {started.length > 0 && (
         <section className="rounded-lg border p-3">
           <h2 className="font-heading mb-2 inline-flex items-center gap-1.5 text-sm font-medium">
-            <Sparkles className="size-4" aria-hidden="true" />
+            <Sparkles className="size-4 text-brand-pink" aria-hidden="true" />
             この月から食べ始めたもの
           </h2>
           <ul className="flex flex-wrap gap-1.5">
@@ -232,7 +174,7 @@ async function LogTab({
                   {formatDate(f.firstDate)}〜{" "}
                   {f.productId !== null ? (
                     <Link href={`/products/${f.productId}`} className="hover:underline">
-                      {shortLabel(f.label, 18)}
+                      {shortLabel(f.label, 18, f.registeredShortName)}
                     </Link>
                   ) : (
                     shortLabel(f.label, 18)
@@ -244,112 +186,10 @@ async function LogTab({
         </section>
       )}
 
-      <MonthGridView grid={grid} data={data} today={today} />
-      <MonthAgendaView grid={grid} data={data} today={today} />
-    </>
-  );
-}
-
-/**
- * 「いつものご飯」タブ。登録の一覧と、今日その時間に記録があるかだけを渡す。
- *
- * getMealDay は「記録」タブが今日の下書きを作るのに既に使っているものと同じ。
- * 「今日は記録あり／まだ」の答えが2本のクエリに分かれないよう、専用のクエリは
- * 足さない（月グリッドの印と同じ方針）。
- */
-async function UsualTab({ today }: { today: DateStr }) {
-  const [rows, day] = await Promise.all([getUsualMeals(), getMealDay(today)]);
-
-  return (
-    <UsualMealSection
-      rows={rows}
-      todayRecorded={{
-        morning: day.morning.length > 0,
-        evening: day.evening.length > 0,
-      }}
-    />
-  );
-}
-
-async function FoodsTab() {
-  const [foods, favoriteIds] = await Promise.all([
-    getFoodHistory(),
-    getFavoriteProductIds(),
-  ]);
-
-  if (foods.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-2 py-16 text-center">
-        <UtensilsCrossed className="size-8 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">まだ食事の記録がありません</p>
-        <p className="max-w-sm text-xs text-muted-foreground">
-          「記録」タブでカレンダーの日を選ぶと、朝・夜・おやつを登録できます。
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <section className="flex flex-col gap-3">
-      <p className="text-xs text-muted-foreground tabular-nums">
-        {foods.length}種類の食べもの
-      </p>
-      <div className="overflow-x-auto rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>食べたもの</TableHead>
-              <TableHead className="text-right">食べ始め</TableHead>
-              <TableHead className="text-right">最後</TableHead>
-              <TableHead className="text-right">日数</TableHead>
-              <TableHead className="text-right">朝/夜/おやつ</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {foods.map((f) => (
-              <TableRow key={f.key}>
-                <TableCell className="max-w-md whitespace-normal">
-                  {f.productId !== null ? (
-                    <Link
-                      href={`/products/${f.productId}`}
-                      className="text-sm leading-snug hover:underline"
-                    >
-                      <ProductName name={f.label} />
-                    </Link>
-                  ) : (
-                    <span className="text-sm leading-snug">
-                      <ProductName name={f.label} />
-                    </span>
-                  )}
-                  {f.productId !== null && (
-                    <div className="mt-1">
-                      <FavoriteButton
-                        productId={f.productId}
-                        isFavorite={favoriteIds.has(f.productId)}
-                        size="sm"
-                      />
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatDate(f.firstDate)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatDate(f.lastDate)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">{f.dayCount}日</TableCell>
-                <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
-                  {f.slots.morning}/{f.slots.evening}/{f.slots.treat}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {SLOT_LABEL.morning}・{SLOT_LABEL.evening}・{SLOT_LABEL.treat}の順に、
-        それぞれ何回登録したかを表示しています。
-      </p>
-    </section>
+      <MonthGridView grid={grid} data={data} today={today} usual={usual} />
+      <MonthAgendaView grid={grid} data={data} today={today} usual={usual} />
+      {/* 凡例は1回だけ。両ビューの外に置くので画面幅によらず出る */}
+      <MarkLegend />
+    </div>
   );
 }

@@ -36,6 +36,7 @@ export function MocaHero({
   mealLines,
   todayDraft,
   previousDate,
+  usual,
   profile,
   photoSrc,
   blobEnabled,
@@ -43,8 +44,18 @@ export function MocaHero({
   const HighlightIcon = highlight ? HIGHLIGHT_ICON[highlight.icon] : null;
 
   return (
-    <Card>
-      <CardContent>
+    // 差し色のピンクの枠。ページで唯一の Card をもう一段だけ主役にする
+    <Card className="relative ring-2 ring-brand-pink/25">
+      {/*
+        肉球の透かし。装飾なので aria-hidden・pointer-events-none で、
+        文字の下には敷かない（右下の余白に置く）。破線は使わない —
+        破線は「まだ空」の記号として他所で意味を持っている
+      */}
+      <PawPrint
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-3 -bottom-3 size-24 text-brand-pink/10"
+      />
+      <CardContent className="relative">
         <ProfileFrame
           profile={profile}
           photoSrc={photoSrc}
@@ -73,7 +84,7 @@ export function MocaHero({
           {highlight && HighlightIcon && (
             <p className="inline-flex items-center gap-1.5 text-sm">
               <HighlightIcon
-                className="size-4 text-muted-foreground"
+                className="size-4 text-brand-pink"
                 aria-hidden="true"
               />
               {highlight.text}
@@ -118,6 +129,7 @@ export function MocaHero({
             <MealDayDialog
               draft={todayDraft}
               previousDate={previousDate}
+              usual={usual}
               triggerVariant="default"
               // ページで一番押される1つ。既定の "sm" は h-7（28px）で、
               // 親指の目安（44px）を大きく下回る。ダイアログが持つ2値のうち

@@ -32,14 +32,17 @@ export function CareSection({
 }) {
   const label = CARE_KIND_LABEL[kind];
   const Icon = kind === "trimming" ? Scissors : Stethoscope;
-  // 今日より先の日付 = 予約（schema.ts の care_visits）。一覧は新しい順なので先頭に並ぶ
+  // 今日より先の日付 = 予約（schema.ts の care_visits）。
+  // 一覧は「これからが近い順 → 済んだ記録が新しい順」（getCareVisits）
   const upcoming = visits.filter((v) => v.date > today).length;
 
   const placeOptions = places.map((p) => ({ id: p.id, name: p.name }));
   const courseOptions = courses.map((c) => ({ id: c.id, name: c.name, priceYen: c.priceYen }));
   /**
-   * 新規の記録で選んでおくお店。登録が1件だけならそれ、複数なら直近の記録の
-   * お店（一覧は新しい順なので先頭から探す）。毎回同じ店を選び直させない。
+   * 新規の記録で選んでおくお店。登録が1件だけならそれ、複数なら一覧の先頭に
+   * 近いお店。並びが「これからが近い順 → 済んだ記録が新しい順」になったので、
+   * 予約があれば次に行く店、無ければ最後に行った店が既定になる
+   * （新しい順だった頃は「一番遠い予約の店」が既定になっていた）。
    */
   const defaultPlaceId =
     places.length === 1

@@ -36,9 +36,11 @@ import {
 } from "@/lib/queries-care";
 import {
   getRecentMealDays,
+  getUsualMeals,
   getVaccinationSchedule,
   type DayMeals,
   type MealEntryRow,
+  type UsualMealRow,
 } from "@/lib/queries-log";
 import { getDogProfile } from "@/lib/queries-profile";
 import { shortLabel } from "@/lib/short-name";
@@ -101,6 +103,8 @@ export interface HomeHero {
   mealLines: HomeMealLine[];
   /** 「今日を記録」の MealDayDialog に渡す下書き */
   todayDraft: DayDraft;
+  /** 「いつものご飯を追加」に渡す登録一覧（カレンダーと同じもの） */
+  usual: UsualMealRow[];
   /** 「前回をコピー」の対象。今日より前で記録のある直近の日 */
   previousDate: DateStr | null;
   /**
@@ -169,7 +173,9 @@ function mealLine(slot: MealSlot, entries: MealEntryRow[]): HomeMealLine {
     text:
       entries.length === 0
         ? EMPTY_SLOT_TEXT[slot]
-        : entries.map((e) => shortLabel(e.label, MEAL_LABEL_MAX)).join("、"),
+        : entries
+            .map((e) => shortLabel(e.label, MEAL_LABEL_MAX, e.registeredShortName))
+            .join("、"),
     empty: entries.length === 0,
   };
 }
@@ -188,6 +194,8 @@ function toDraft(date: DateStr, meals: DayMeals | null): DayDraft {
       id: r.id,
       productId: r.productId,
       label: r.label,
+      amountValue: r.amountValue,
+      amountUnit: r.amountUnit,
       amount: r.amount,
       note: r.note,
       imageUrl: r.imageUrl,
@@ -211,6 +219,7 @@ export async function getHomeSnapshot(): Promise<HomeSnapshot> {
     vaccineSchedule,
     trimmingDates,
     trimmingReservations,
+    usual,
     stats,
     lastSync,
   ] = await Promise.all([
@@ -225,6 +234,8 @@ export async function getHomeSnapshot(): Promise<HomeSnapshot> {
     // 混ぜると周期の推定が壊れるので、2文に分けて引く
     getRecentCareDates("trimming", today),
     getUpcomingCareVisits("trimming", today),
+    // ヒーローの「今日を記録」にも「いつものご飯を追加」を出す（1文・高々20行）
+    getUsualMeals(),
     getStats(),
     getLastSync(),
   ]);
@@ -265,6 +276,7 @@ export async function getHomeSnapshot(): Promise<HomeSnapshot> {
     weight: formatWeight(profile?.weightGrams, profile?.weighedOn),
     mealLines: MEAL_SLOTS.map((slot) => mealLine(slot, todayMeals?.[slot] ?? [])),
     todayDraft,
+    usual,
     previousDate,
     profile,
     // Blob 未設定のときは src を作らない。/api/dog-photo も 404 を返すので、
