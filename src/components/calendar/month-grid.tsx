@@ -120,15 +120,8 @@ export function MonthGridView({
                 isToday && "bg-accent ring-2 ring-foreground/70 ring-inset",
               )}
             >
-              {/*
-                日にちと印の行。印は**種類ごとに1つではなく件数ぶん**並ぶ
-                （同じ日に2本接種する・予定が2件重なる、が起こりうる）。
-                上限は無いので flex-wrap で折る — 横には溢れさせない。
-                7つ目からはこの週の行が min-h-28 を超えて伸びる。
-                （高さを抑えたくなったら、順序は固定なので
-                  marks.slice(0, 6) ＋「＋N」で安全に切れる）
-              */}
-              <div className="flex flex-wrap items-center gap-1">
+              {/* 日にちの行。印は下の行に分ける（すぐ下のコメント参照） */}
+              <div className="flex items-center gap-1">
                 <span
                   className={cn(
                     "text-xs tabular-nums",
@@ -151,11 +144,25 @@ export function MonthGridView({
                     今日
                   </span>
                 )}
-                {/*
-                  印は MealDayDialog のトリガーの**外**に置く。中に入れると
-                  ボタンの中にリンクが入り、押した先が2つある要素になる。
-                */}
-                {d?.marks.map((mark) => {
+              </div>
+
+              {/*
+                印の行。**日にちと同じ行に混ぜない** — 混ぜると1つ目だけが
+                日にちの幅ぶん右にずれ、2つ目から左端に折り返して段違いに見える。
+                印は**種類ごとに1つではなく件数ぶん**並ぶ（同じ日に2本接種する・
+                予定が2件重なる、が起こりうる）。上限は無いので flex-wrap で折る
+                — 横には溢れさせない。折り返しが増えればこの週の行が
+                min-h-28 を超えて伸びる。（高さを抑えたくなったら、順序は
+                固定なので marks.slice(0, 6) ＋「＋N」で安全に切れる）
+
+                印が無い日はこの行ごと描かない（空の隙間を作らない）。
+
+                印は MealDayDialog のトリガーの**外**に置く。中に入れると
+                ボタンの中にリンクが入り、押した先が2つある要素になる。
+              */}
+              {d && d.marks.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  {d.marks.map((mark) => {
                   const Icon = MARK_ICON[mark.icon];
                   const style = MARK_STYLE[mark.kind];
                   // 読み上げにはラベル（「〜の予定」つき）と薬名・ワクチン名まで。
@@ -186,8 +193,9 @@ export function MonthGridView({
                       {style.short}
                     </Link>
                   );
-                })}
-              </div>
+                  })}
+                </div>
+              )}
 
               {d && (
                 <MealDayDialog
@@ -195,6 +203,15 @@ export function MonthGridView({
                   previousDate={d.previousDate}
                   usual={usual}
                   triggerVariant="ghost"
+                  /*
+                    size="sm" は h-7（28px）固定。3食そろった日は中身が 64px に
+                    なり、items-center のぶん上下に18pxずつはみ出して、上は
+                    日にち・印の行にかぶっていた。h-auto で中身に合わせ、
+                    mt-auto でマスの一番下へ落とす（セルは flex flex-col）。
+                    min-h-7 は記録の無い日の「＋」の当たり判定を28px残すため。
+                    px-1 は sm の px-2.5 だと文字が日にちより右にずれるため。
+                  */
+                  triggerClassName="mt-auto h-auto min-h-7 px-1 py-0.5 whitespace-normal"
                   trigger={
                     <span className="flex w-full flex-col items-start gap-0.5">
                       {MEAL_SLOTS.map((slot) => {
@@ -205,7 +222,10 @@ export function MonthGridView({
                             key={slot}
                             className="flex w-full items-baseline gap-1 text-left"
                           >
-                            <span className="shrink-0 text-[10px] text-muted-foreground">
+                            {/* 行の高さを隣の 11px と揃える。指定しないと
+                                ボタンの text-sm 由来の 20px を継いで、
+                                13.75px の文字が20pxの行になる */}
+                            <span className="shrink-0 text-[10px] leading-tight text-muted-foreground">
                               {SLOT_LABEL[slot]}
                             </span>
                             <span className="truncate text-[11px] leading-tight">

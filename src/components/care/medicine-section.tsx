@@ -2,6 +2,7 @@ import { Pill } from "lucide-react";
 
 import { MedicineDeleteButton } from "@/components/care/medicine-delete-button";
 import { MedicineDialog } from "@/components/care/medicine-dialog";
+import { ImagePreview } from "@/components/image-preview";
 import { Badge } from "@/components/ui/badge";
 import type { MedicineRow } from "@/lib/queries-care";
 
@@ -48,14 +49,24 @@ export function MedicineSection({
               key={m.id}
               className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border p-3"
             >
-              {/* private な blob を /api 経由で出すので next/image は使わない */}
+              {/* private な blob を /api 経由で出すので next/image は使わない。
+                  40px ではパッケージの文字が読めないので押したら拡大できる */}
               {blobEnabled && m.hasPhoto && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={`/api/medicine-photos/${m.id}?v=${encodeURIComponent(m.photoUpdatedAt ?? "")}`}
-                  alt=""
-                  className="size-10 shrink-0 rounded-md border object-contain"
-                />
+                <ImagePreview
+                  images={[
+                    `/api/medicine-photos/${m.id}?v=${encodeURIComponent(m.photoUpdatedAt ?? "")}`,
+                  ]}
+                  caption={m.name}
+                  title="薬の写真"
+                  className="shrink-0"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/medicine-photos/${m.id}?v=${encodeURIComponent(m.photoUpdatedAt ?? "")}`}
+                    alt=""
+                    className="size-10 rounded-md border object-contain"
+                  />
+                </ImagePreview>
               )}
               <span className="break-words">{m.name}</span>
               {m.forHeartworm && (

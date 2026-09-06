@@ -151,7 +151,7 @@ export function UsualMealSection({
                               key={it.id}
                               className="flex flex-wrap items-start gap-x-3 gap-y-1 rounded-md border p-2"
                             >
-                              <Thumb src={it.imageUrl} alt="" />
+                              <Thumb src={it.imageUrl} alt="" caption={it.label} />
                               <span className="min-w-0 flex-1 text-sm leading-snug break-words">
                                 <ProductName name={it.label} />
                               </span>

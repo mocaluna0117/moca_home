@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ImagePreview } from "@/components/image-preview";
 import { Input } from "@/components/ui/input";
 import {
   removeMedicinePhoto,
@@ -259,13 +260,22 @@ export function MedicineDialog({
                     className="size-16 shrink-0 rounded-md border object-contain"
                   />
                 ) : photoSrc ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={photoSrc}
-                    alt=""
-                    className="size-16 shrink-0 rounded-md border object-contain"
-                    onError={() => setHasPhoto(false)}
-                  />
+                  // 開いているダイアログの中なので nested（背景を自前で出す）
+                  <ImagePreview
+                    images={[photoSrc]}
+                    caption={name}
+                    title="薬の写真"
+                    nested
+                    className="shrink-0"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photoSrc}
+                      alt=""
+                      className="size-16 rounded-md border object-contain"
+                      onError={() => setHasPhoto(false)}
+                    />
+                  </ImagePreview>
                 ) : (
                   <span className="flex size-16 shrink-0 items-center justify-center rounded-md border border-dashed text-muted-foreground">
                     <ImageOff className="size-5" aria-hidden="true" />

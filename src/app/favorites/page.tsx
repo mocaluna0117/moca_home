@@ -2,6 +2,7 @@ import { Package, Star } from "lucide-react";
 import Link from "next/link";
 
 import { FavoriteButton } from "@/components/favorite-button";
+import { ImagePreview } from "@/components/image-preview";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { ProductName } from "@/components/product-name";
 import { Badge } from "@/components/ui/badge";
@@ -44,14 +45,18 @@ export default async function FavoritesPage() {
               key={f.productId}
               className="flex items-start gap-3 rounded-lg border p-3"
             >
-              <div className="relative size-20 shrink-0 overflow-hidden rounded-md border bg-muted">
+              <ImagePreview
+                images={[f.imageUrl]}
+                caption={f.name}
+                className="relative size-20 shrink-0 overflow-hidden rounded-md border bg-muted"
+              >
                 <ImageWithFallback
                   src={f.imageUrl}
                   alt={f.name}
                   sizes="80px"
                   className="size-full"
                 />
-              </div>
+              </ImagePreview>
 
               <div className="min-w-0 flex-1">
                 <Link

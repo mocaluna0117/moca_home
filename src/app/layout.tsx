@@ -6,6 +6,7 @@ import Link from "next/link";
 import { LogoutButton } from "@/components/logout-button";
 import { TopNav } from "@/components/top-nav";
 import { SyncButton } from "@/components/sync-button";
+import { BackToTop } from "@/components/back-to-top";
 import { Toaster } from "@/components/ui/sonner";
 import { SESSION_COOKIE, isValidSession } from "@/lib/auth";
 import { getCatalogState, getLastSync, getStats } from "@/lib/queries";
@@ -84,6 +85,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
           {children}
         </main>
+        {/*
+          ログイン画面は1画面ぶんしか無くスクロールしないので出さない
+          （ヘッダーと同じ「入ったあとの外枠」として認証の内側に置く）。
+        */}
+        {authed && <BackToTop />}
         <Toaster position="bottom-right" />
       </body>
     </html>

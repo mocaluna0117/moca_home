@@ -81,6 +81,7 @@ export function MealDayDialog({
   trigger,
   triggerVariant = "outline",
   triggerSize = "sm",
+  triggerClassName,
 }: {
   draft: DayDraft;
   /** 「昨日をコピー」の対象。記録のある直近の日 */
@@ -95,6 +96,12 @@ export function MealDayDialog({
   trigger: React.ReactNode;
   triggerVariant?: "default" | "outline" | "ghost";
   triggerSize?: "sm" | "default";
+  /**
+   * トリガーの Button に足すクラス（product-search-dialog.tsx と同じ作法）。
+   * カレンダーのマスは中身が3行になるので、size が持つ固定の高さを
+   * 呼び出し側から外す必要がある。
+   */
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [slots, setSlots] = useState<Slots>(() => toSlots(draft));
@@ -190,7 +197,11 @@ export function MealDayDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
-          <Button variant={triggerVariant} size={triggerSize}>
+          <Button
+            variant={triggerVariant}
+            size={triggerSize}
+            className={triggerClassName}
+          >
             {trigger}
           </Button>
         }

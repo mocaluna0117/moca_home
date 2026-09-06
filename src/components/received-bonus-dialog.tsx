@@ -214,7 +214,7 @@ export function ReceivedBonusDialog({
                   </>
                 ) : (
                   <div className="flex items-start gap-2">
-                    <Thumb src={row.imageUrl} alt="" />
+                    <Thumb src={row.imageUrl} alt="" caption={row.label} nested />
                     <span className="flex-1 text-sm leading-snug break-words">
                       <ProductName name={row.label} />
                     </span>
