@@ -323,6 +323,18 @@ export async function clearMealDay(date: DateStr): Promise<ActionResult> {
 // ------------------------------------------------------------------ いつものご飯
 
 /**
+ * 登録を保存したとき、**今日の記録**がどうなったか。
+ *
+ * - `"untouched"` … 1行も書いていない。**編集はいつもこれ**
+ * - `"written"`   … 初めての登録だったので、今日のぶんを記録として入れた
+ * - `"kept"`      … 初めての登録だが、今日はすでに記録があったので触っていない
+ *
+ * 記録に「いつもの」印を付けない設計では、ダイアログのトーストがこの機能の
+ * 唯一のフィードバックなので、真偽1つに畳まず3つの結末をそのまま返す。
+ */
+export type TodayEffect = "untouched" | "written" | "kept";
+
+/**
  * 「いつものご飯」の1スロットぶんを登録する。形は saveMealSlot と同じ
  * diff-upsert（id あり → update / id なし → insert / ペイロードに無い
  * 既存行 → delete）。
@@ -334,14 +346,15 @@ export async function clearMealDay(date: DateStr): Promise<ActionResult> {
  * `rows` が空配列で来るのが**オフの手段**（「登録を消す」）。エラーにしない —
  * 品目0件のスロットは planUsualApply が落とすので、それだけで自動記録は止まる。
  *
- * 保存のあと同じ applyUsualMeals() を呼ぶので、登録したその日から効果が見える。
- * 戻りの `appliedToday` は「今日のぶんも入ったか」。記録に「いつもの」印を
- * 付けない決定の代わりに、これがダイアログの唯一のフィードバックになる。
+ * **カレンダーの記録には触らない。** 例外は初めての登録のときだけで、
+ * そのときは今日のぶんがまだ空なら記録として入れる（上の TodayEffect と、
+ * 実際に適用する箇所のコメント）。編集で記録が変わらないのは、登録が
+ * 雛形で、記録がその写しだから。
  */
 export async function saveUsualMealSlot(
   slot: UsualSlot,
   rows: MealEntryInput[],
-): Promise<{ ok: true; appliedToday: boolean } | { ok: false; error: string }> {
+): Promise<{ ok: true; todayEffect: TodayEffect } | { ok: false; error: string }> {
   try {
     if (!isUsualSlot(slot)) return { ok: false, error: "食事の区分が不正です" };
     if (rows.length > MAX_ENTRIES_PER_SLOT) {
@@ -366,7 +379,7 @@ export async function saveUsualMealSlot(
       resolved.push({ id: row.id, ...r.value });
     }
 
-    await db.transaction(async (tx) => {
+    const wasFirstRegistration = await db.transaction(async (tx) => {
       const existingIds = new Set(
         (
           await tx
@@ -419,26 +432,50 @@ export async function saveUsualMealSlot(
           await tx.delete(usualMeals).where(eq(usualMeals.id, id)).run();
         }
       }
+
+      // 「初めての登録か」が分かるのはここだけ（下の適用の門になる）
+      return existingIds.size === 0;
     });
 
-    // 適用は**いま保存したスロットだけ**。全スロットに適用すると、その日
-    // わざと空にしたもう片方を巻き戻してしまう（夜を消した日に朝の登録を
-    // 直すと夜が復活する。設計審査で実際に出た欠陥）。
-    // cron は applyUsualMeals で両方を見る — あちらは日付が毎回変わるので
-    // 同じ問題が起きない。
-    const stamp = nowJstIso();
-    const today = todayJst(stamp);
-    const mine = planUsualApply(await getUsualMeals()).find((p) => p.slot === slot);
-    // 登録を空にした（自動記録をやめた）ときは mine が無い = 何も入れない
-    const applied = mine
-      ? (await applyUsualSlot(slot, mine.items, today, stamp)) === "written"
-      : false;
+    /*
+      カレンダーに書くのは**初めての登録のときだけ**。編集では1行も書かない。
+
+      登録は「これから毎朝入れるもの」の雛形で、入った記録はその写し。
+      テーブルが別なので過去の日はもとより変わらないが、「その日のうちに
+      登録を保存し直すと、空いているぶんに入り直す」という道だけが残って
+      いた。飼い主から見れば「登録を編集したらカレンダーが変わった」で、
+      雛形と記録の区別が崩れる（この経路を消してほしいという要望を受けた）。
+
+      初回だけ残すのは、登録した直後に何も起きないと「本当に入るのか」を
+      確かめられないため。以後その日に入れたくなったら、カレンダーの
+      「いつものご飯を追加」で明示的に足す（あちらも写しを作る）。
+
+      適用は**いま保存したスロットだけ**。全スロットに適用すると、その日
+      わざと空にしたもう片方を巻き戻してしまう（夜を消した日に朝の登録を
+      直すと夜が復活する。設計審査で実際に出た欠陥）。cron は
+      applyUsualMeals で両方を見る — あちらは日付が毎回変わるので
+      同じ問題が起きない。
+    */
+    let todayEffect: TodayEffect = "untouched";
+    if (wasFirstRegistration) {
+      const stamp = nowJstIso();
+      const today = todayJst(stamp);
+      const mine = planUsualApply(await getUsualMeals()).find((p) => p.slot === slot);
+      // 0品で保存したときは mine が無い = 何も入れない
+      if (mine) {
+        /*
+          "unresolved"（登録した商品がカタログから消えていた）も1行も
+          書いていないので "untouched" のまま。理由を言えないだけで、
+          「入れた」「すでにあった」と嘘は言わない。
+        */
+        const outcome = await applyUsualSlot(slot, mine.items, today, stamp);
+        if (outcome === "written") todayEffect = "written";
+        else if (outcome === "occupied") todayEffect = "kept";
+      }
+    }
 
     revalidateLog();
-    // ダイアログのトーストはこの1つの真偽だけを見る。全スロットの合計から
-    // 導くと、朝を保存したのに夜が入った日に「今日のぶんも記録しました」と
-    // 嘘をつく（印を付けない設計では、このトーストが唯一のフィードバック）
-    return { ok: true, appliedToday: applied };
+    return { ok: true, todayEffect };
   } catch (err) {
     return {
       ok: false,
@@ -449,7 +486,8 @@ export async function saveUsualMealSlot(
 
 /**
  * 登録してある「いつものご飯」を**今日**の記録として入れる。
- * 呼び出し元は毎朝8時の cron（/api/cron/daily）と、登録を保存した直後の2つ。
+ * 呼び出し元は毎朝8時の cron（/api/cron/daily）だけ。初めての登録のときは
+ * saveUsualMealSlot が applyUsualSlot を1スロットぶんだけ呼ぶ。
  *
  * 冪等性の組み立て（この5点が崩れたら「いつ適用したか」の台帳が必要になる）:
  *  1. **この経路の文は INSERT だけ**。UPDATE も DELETE も無いので、すでに
@@ -484,9 +522,10 @@ type UsualSlotOutcome = "written" | "occupied" | "unresolved";
 /**
  * 1スロットぶんを今日に実体化する。**門もここが持つ。**
  *
- * cron（全スロット）と登録の保存（そのスロットだけ）が**同じ判断**を使うために
- * 切り出してある。保存のあとに全スロットへ適用すると、その日わざと空にした
- * もう片方を巻き戻す。
+ * cron（毎朝・全スロット）と**初めての登録**（そのスロットだけ）が**同じ判断**を
+ * 使うために切り出してある。保存のあとに全スロットへ適用すると、その日わざと
+ * 空にしたもう片方を巻き戻す。**登録の編集はここを通らない** — 雛形を直しても
+ * 記録は変えない（saveUsualMealSlot のコメント参照）。
  *
  * 部分適用はしない: 登録した商品が products から消えていて1品でも解決
  * できなければ "unresolved" を返して1行も書かない（食べた品数が嘘になる
