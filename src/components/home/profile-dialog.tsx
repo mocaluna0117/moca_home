@@ -146,14 +146,14 @@ export function ProfileDialog({
 
       let prepared: PreparedPhoto;
       try {
-        // 丸枠は最大128pxでしか出ない。1200px は表示の9倍で、毎回その
-        // バイト列を運んでいた。384px（Retina で2倍を見込んで3倍）に落とす。
+        // 丸枠は最大176pxでしか出ない。1200px は表示の7倍で、毎回その
+        // バイト列を運んでいた。512px（Retina の2倍でも足りる）に落とす。
         // **これから撮る写真だけ**に効く（保存済みの写真は変わらない）。
         // allowOriginalFallback: false は「変換できなかった原本を送らない」——
         // HEIC を <img> で描けないブラウザがあり、顔写真が出ないのは
         // 証明書のサムネイルが出ないのとは重みが違う
         prepared = await preparePhoto(pending.file, {
-          maxEdge: 384,
+          maxEdge: 512,
           allowOriginalFallback: false,
         });
       } catch (err) {

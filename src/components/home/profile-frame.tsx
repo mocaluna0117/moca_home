@@ -76,7 +76,7 @@ export function ProfileFrame({
           type="button"
           onClick={openDialog}
           aria-label={`${name}のプロフィールを${profile === null ? "作る" : "編集"}`}
-          className="relative size-24 shrink-0 rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-32"
+          className="relative size-32 shrink-0 rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-44"
         >
           {src !== null ? (
             // next/image は使わない。/api/dog-photo は private blob の中継で、
@@ -89,8 +89,8 @@ export function ProfileFrame({
               // 実寸を書く。ページで最初に目に入る1枚なので、ブラウザに
               // 枠を先に確保させ、取得の優先度も上げる（既定だと
               // レイアウトが済むまで低優先のまま待たされる）
-              width={128}
-              height={128}
+              width={176}
+              height={176}
               decoding="async"
               fetchPriority="high"
               onError={() => setFailedSrc(src)}
@@ -100,14 +100,14 @@ export function ProfileFrame({
             // 写真が無い・出せない・落ちた、のどれでも同じ丸。高さが変わらないので
             // ヒーローのレイアウトは崩れない
             <span className="flex size-full items-center justify-center rounded-full border-2 border-dashed bg-muted/30 text-muted-foreground">
-              <PawPrint className="size-8 text-brand-pink/70 sm:size-10" aria-hidden="true" />
+              <PawPrint className="size-10 text-brand-pink/70 sm:size-14" aria-hidden="true" />
             </span>
           )}
           {/* 行があるときだけの小さな鉛筆。行が無いときは下の「作る」ボタンが
               同じことを言うので、2つ出さない */}
           {profile !== null && (
-            <span className="absolute -right-1 -bottom-1 rounded-full border bg-background p-1.5 text-muted-foreground">
-              <PencilLine className="size-3.5" aria-hidden="true" />
+            <span className="absolute -right-1 -bottom-1 rounded-full border bg-background p-2 text-muted-foreground">
+              <PencilLine className="size-4" aria-hidden="true" />
             </span>
           )}
         </button>
