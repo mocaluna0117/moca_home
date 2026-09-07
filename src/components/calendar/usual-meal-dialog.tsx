@@ -30,9 +30,10 @@ import type { UsualSlot } from "@/lib/usual-meals";
  * 「いつものご飯」を1スロットぶん登録・編集するダイアログ。
  * 行エディタは記録ダイアログと同じ MealItemRows（自由度を揃える）。
  *
- * 保存すると saveUsualMealSlot が続けて applyUsualMeals() を呼ぶので、
- * **今日の記録が変わることがある**。記録に「いつもの」印を付けない決定の
- * 代わりに、その結果（appliedToday）をトーストで言うのがここの役目。
+ * **編集してもカレンダーの記録は変わらない。** 初めての登録のときだけ、
+ * 今日のぶんがまだ空なら記録として入る（saveUsualMealSlot）。記録に
+ * 「いつもの」印を付けない決定の代わりに、その結末（todayEffect）を
+ * トーストで言うのがここの役目。
  *
  * 失敗したら閉じない（入力中の行を失わせない）。行は state だけが持つので、
  * 閉じれば消え、次に開いたときは handleOpenChange が rows から作り直す。
@@ -89,9 +90,13 @@ export function UsualMealDialog({
             : `いつもの${label}を登録しました`,
           {
             // 印を付けない代わりの唯一のフィードバック
-            description: res.appliedToday
-              ? "今日のぶんも記録しました。"
-              : "今日はすでに記録があるので、そのままにしました。",
+            description:
+              res.todayEffect === "written"
+                ? "今日のぶんも記録しました。"
+                : res.todayEffect === "kept"
+                  ? "今日はすでに記録があるので、そのままにしました。"
+                  : // 編集はこちら。カレンダーを触らないぶん、入れ方を言う
+                    "カレンダーの記録は変えていません。今日のぶんに入れるなら、カレンダーで「いつものご飯を追加」を押してください。",
           },
         );
       }
@@ -127,7 +132,8 @@ export function UsualMealDialog({
           <DialogTitle>いつもの{label}</DialogTitle>
           <DialogDescription>
             毎朝、その日の{label}がまだ空なら、ここに登録したものを記録として入れます。
-            中身を変えても、これまでに入った記録は変わりません。
+            記録はそのときの写しなので、ここを直しても、すでにカレンダーに入っている
+            記録（今日のぶんも）は変わりません。
           </DialogDescription>
         </DialogHeader>
 
