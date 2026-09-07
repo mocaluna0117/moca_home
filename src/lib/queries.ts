@@ -2,7 +2,7 @@ import { cache } from "react";
 
 import "server-only";
 
-import { and, desc, eq, inArray, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm";
 
 import {
   computeOrderBonuses,
@@ -26,6 +26,7 @@ import {
   type Product,
   type ReceivedBonus,
   productShortNames,
+  orderFiles,
 } from "@/lib/db/schema";
 
 export interface OrderItemWithBonus extends OrderItem {
@@ -44,6 +45,11 @@ export interface OrderWithItems extends Order {
   receivedBonuses: ReceivedBonusRow[];
   /** Σ quantity of recorded actuals (0 = none recorded). */
   receivedTotal: number;
+  /**
+   * 添付ファイルの数。一覧に「添付あり」の印を出すためだけの数で、
+   * 実体（file_name や pathname）は一覧に渡さない。
+   */
+  fileCount: number;
 }
 
 function firstImage(raw: string | null): string | null {
@@ -85,6 +91,7 @@ function withBonuses(
   order: Order,
   items: OrderItem[],
   received: ReceivedBonusRow[],
+  fileCount = 0,
 ): OrderWithItems {
   const bonuses = computeOrderBonuses(items);
   return {
@@ -93,7 +100,21 @@ function withBonuses(
     bonuses,
     receivedBonuses: received,
     receivedTotal: received.reduce((n, r) => n + r.quantity, 0),
+    fileCount,
   };
+}
+
+/**
+ * 注文ごとの添付ファイル数。**1文で全注文ぶんを数える**（注文の数だけ
+ * クエリを撃たない）。一覧の印にしか使わないので、実体は引かない。
+ */
+async function fetchFileCountByOrder(): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ orderId: orderFiles.orderId, n: sql<number>`count(*)` })
+    .from(orderFiles)
+    .groupBy(orderFiles.orderId)
+    .all();
+  return new Map(rows.map((r) => [r.orderId, Number(r.n)]));
 }
 
 /** Orders newest-first; `q` filters by product name within the order. */
@@ -123,9 +144,17 @@ export async function getOrders(q?: string): Promise<OrderWithItems[]> {
     else byOrder.set(item.orderId, [item]);
   }
 
-  const receivedByOrder = await fetchReceivedByOrder();
+  const [receivedByOrder, fileCountByOrder] = await Promise.all([
+    fetchReceivedByOrder(),
+    fetchFileCountByOrder(),
+  ]);
   return rows.map((o) =>
-    withBonuses(o, byOrder.get(o.id) ?? [], receivedByOrder.get(o.id) ?? []),
+    withBonuses(
+      o,
+      byOrder.get(o.id) ?? [],
+      receivedByOrder.get(o.id) ?? [],
+      fileCountByOrder.get(o.id) ?? 0,
+    ),
   );
 }
 
@@ -373,7 +402,8 @@ export async function getOrder(id: string): Promise<OrderWithItems | null> {
     .where(eq(orderItems.orderId, id))
     .all();
   const received = (await fetchReceivedByOrder(id)).get(id) ?? [];
-  return withBonuses(order, items, received);
+  const fileCount = (await fetchFileCountByOrder()).get(id) ?? 0;
+  return withBonuses(order, items, received, fileCount);
 }
 
 export interface ProductDetail {
@@ -611,4 +641,52 @@ export async function getProductShortName(productId: number): Promise<string | n
     .where(eq(productShortNames.productId, productId))
     .get();
   return row?.shortName ?? null;
+}
+
+
+// ------------------------------------------------------- 注文の添付ファイル
+
+export interface OrderFileRow {
+  id: number;
+  fileName: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+}
+
+/**
+ * 1注文の添付ファイル。**pathname と url は返さない** — 表示は
+ * /api/order-files/[id] 経由で、削除は id で足りる（private ストアの
+ * URL は誰も直接開けず、pathname は削除キーなのでクライアントへ出さない。
+ * dog_profile が url を列に持たないのと同じ作法）。
+ */
+export async function getOrderFiles(orderId: string): Promise<OrderFileRow[]> {
+  return db
+    .select({
+      id: orderFiles.id,
+      fileName: orderFiles.fileName,
+      contentType: orderFiles.contentType,
+      sizeBytes: orderFiles.sizeBytes,
+      createdAt: orderFiles.createdAt,
+    })
+    .from(orderFiles)
+    .where(eq(orderFiles.orderId, orderId))
+    .orderBy(asc(orderFiles.id))
+    .all();
+}
+
+/** 添付1件の実体。/api/order-files/[id] だけが呼ぶ */
+export async function getOrderFile(
+  id: number,
+): Promise<{ pathname: string; contentType: string | null; fileName: string } | null> {
+  const row = await db
+    .select({
+      pathname: orderFiles.pathname,
+      contentType: orderFiles.contentType,
+      fileName: orderFiles.fileName,
+    })
+    .from(orderFiles)
+    .where(eq(orderFiles.id, id))
+    .get();
+  return row?.pathname ? row : null;
 }

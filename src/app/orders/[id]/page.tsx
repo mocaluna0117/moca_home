@@ -11,6 +11,7 @@ import { FavoriteButton } from "@/components/favorite-button";
 import { ImagePreview } from "@/components/image-preview";
 import { ImageWithFallback } from "@/components/image-with-fallback";
 import { ProductName } from "@/components/product-name";
+import { OrderFilesSection } from "@/components/order-files-section";
 import { ReceivedBonusSection } from "@/components/received-bonus-section";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +24,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getCatalogState, getFavoriteProductIds, getOrder } from "@/lib/queries";
+import {
+  getCatalogState,
+  getFavoriteProductIds,
+  getOrder,
+  getOrderFiles,
+} from "@/lib/queries";
 import { formatDateTime, formatYen } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -37,9 +43,10 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
 
   const itemTotal = order.items.reduce((n, i) => n + i.quantity, 0);
   const hasActuals = order.receivedTotal > 0 || order.receivedBonuses.length > 0;
-  const [catalogState, favoriteIds] = await Promise.all([
+  const [catalogState, favoriteIds, files] = await Promise.all([
     getCatalogState(),
     getFavoriteProductIds(),
+    getOrderFiles(id),
   ]);
   const hasPrediction =
     order.bonuses.totalBonusCount > 0 || order.bonuses.gifts.length > 0;
@@ -236,6 +243,9 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
       </section>
 
       <ReceivedBonusSection order={order} catalogSynced={catalogState.count > 100} />
+
+      {/* 領収書のPDFや梱包の写真。おまけの記録と同じく「あとから手で足す」情報 */}
+      <OrderFilesSection orderId={order.id} files={files} />
 
       <section className="flex justify-end">
         <dl className="w-full max-w-xs space-y-1.5 text-sm">
