@@ -1,6 +1,5 @@
 "use client";
 
-import { upload } from "@vercel/blob/client";
 import { ImageOff, Pill, Plus, Trash2, Upload } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -133,10 +132,12 @@ export function MedicineDialog({
 
       let prepared;
       try {
-        // 出るのはダイアログの中と一覧のサムネイルだけ。長辺1200pxで足りる。
+        // 出るのはダイアログの中（64px）と一覧（40px）と拡大表示だけ。
+        // 拡大でパッケージの文字が読める必要があるので 640px は残す
+        // （1200px は表示の何倍も大きく、毎回運ぶには重すぎた）。
         // 変換に失敗した原本はそのまま上げる（証明書と同じ扱い。HEIC のまま
         // でも記録としては残り、開ける端末では見られる）
-        prepared = await preparePhoto(pending.file, { maxEdge: 1200 });
+        prepared = await preparePhoto(pending.file, { maxEdge: 640 });
       } catch (err) {
         toast.error(
           err instanceof PhotoConvertError
@@ -150,6 +151,12 @@ export function MedicineDialog({
       setUploading(0);
       let uploaded: string | null = null;
       try {
+        /*
+          Blob の SDK は**押した瞬間に**読み込む。静的 import にすると
+          120KB（brotli で約30KB）がこの画面の初回JSに常に乗り、
+          写真を一度も触らない日でも運ぶことになる。
+        */
+        const { upload } = await import("@vercel/blob/client");
         const blob = await upload(
           `medicines/${crypto.randomUUID()}.jpg`,
           prepared.body,

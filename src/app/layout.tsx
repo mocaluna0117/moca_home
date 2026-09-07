@@ -43,13 +43,26 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     !gated ||
     (await isValidSession((await cookies()).get(SESSION_COOKIE)?.value));
 
-  const [lastSync, stats, catalogState] = authed
-    ? await Promise.all([getLastSync(), getStats(), getCatalogState()])
-    : [null, null, null];
-
   // The catalog sweep takes ~30 min — far past any serverless limit, so the
   // button is CLI-only once deployed.
   const catalogSyncAvailable = !process.env.VERCEL;
+
+  /*
+    getCatalogState は**2文を直列**で撃つのに、本番で読むところが無い —
+    使うのは下の catalogSyncAvailable && のボタンだけで、あれは Vercel では
+    必ず false になる。DB は東京、関数も東京だが、1文はやはり往復1回なので
+    「誰も読まない2往復」を毎回の初回表示に乗せない。
+    （タブ移動ではこのレイアウトは再描画されないので、効くのは初回表示と
+      再読み込みのとき。getCatalogState 自体は /orders と /orders/[id] が
+      別の用途で使うので消さない）
+  */
+  const [lastSync, stats, catalogState] = authed
+    ? await Promise.all([
+        getLastSync(),
+        getStats(),
+        catalogSyncAvailable ? getCatalogState() : Promise.resolve(null),
+      ])
+    : [null, null, null];
 
   return (
     <html lang="ja" className={`${cuteFont.variable} h-full antialiased`}>

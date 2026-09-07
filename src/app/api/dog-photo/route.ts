@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isBlobConfigured } from "@/lib/blob";
+import { etagMatches, photoEtag, photoHeaders } from "@/lib/photo-etag";
 import { getDogPhoto } from "@/lib/queries-profile";
 
 export const runtime = "nodejs";
@@ -19,10 +20,17 @@ export const dynamic = "force-dynamic";
  * `?v=` は photoVersion のキャッシュ破りだけのための引数なので、
  * 引数として受け取らない = 読み捨てる。返す実体は常に「今の1枚」。
  *
+ * **ETag を付けて、変わっていなければ本体を送らない。** 以前は no-store で
+ * 毎回 150〜300KB を送り直していた（ページを開くたびに DB 1往復 ＋ Blob 1往復
+ * ＋ 全バイト）。いまは pathname から作った ETag が一致すれば 304 を返し、
+ * **Blob へ取りに行きもしない**。安全性は変わらない — no-cache なので
+ * ブラウザは使う前に必ずここへ確認しに来て、ログアウト後は middleware が
+ * 401 で弾く（キャッシュの中身は表に出ない）。
+ *
  * **どの失敗も 404 の JSON で返し、throw しない。** ヒーローの <img> は
  * onError で破線の丸に落ちるので、500 を投げても得るものが無い。
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const photo = await getDogPhoto();
     if (!photo?.pathname) {
@@ -35,6 +43,15 @@ export async function GET() {
       return NextResponse.json({ error: "写真の保存先が未設定です" }, { status: 404 });
     }
 
+    // 変わっていなければここで終わり。Blob への往復も本体の転送も起きない
+    const etag = photoEtag(photo.pathname);
+    if (etagMatches(request.headers.get("if-none-match"), etag)) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: photoHeaders(photo.contentType ?? "image/jpeg", etag),
+      });
+    }
+
     const { get } = await import("@vercel/blob");
     // private ストアの読み出しはトークンが要る。get() がそれを担う。
     const result = await get(photo.pathname, { access: "private" });
@@ -42,16 +59,10 @@ export async function GET() {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
     return new NextResponse(result.stream, {
-      headers: {
-        "Content-Type": photo.contentType ?? result.blob.contentType ?? "image/jpeg",
-        // 家族と共有する端末で、ログアウト後に直接URLを開いたときに
-        // ブラウザキャッシュから配信されてしまわないようにする。
-        // 縮小後 150〜300KB・同一オリジンなので、毎回取り直しても実用上困らない。
-        "Cache-Control": "private, no-store, max-age=0, must-revalidate",
-        // 画像として保存したものが別のMIMEとして解釈されないように
-        "X-Content-Type-Options": "nosniff",
-        "Content-Disposition": "inline",
-      },
+      headers: photoHeaders(
+        photo.contentType ?? result.blob.contentType ?? "image/jpeg",
+        etag,
+      ),
     });
   } catch {
     return NextResponse.json({ error: "not found" }, { status: 404 });

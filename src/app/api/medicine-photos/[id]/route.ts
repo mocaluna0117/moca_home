@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isBlobConfigured } from "@/lib/blob";
+import { etagMatches, photoEtag, photoHeaders } from "@/lib/photo-etag";
 import { getMedicinePhoto } from "@/lib/queries-care";
 import { parseIdParam } from "@/lib/route-params";
 
@@ -21,7 +22,7 @@ export const dynamic = "force-dynamic";
  * onError で消えるだけで、500 を投げても得るものが無い）。
  */
 export async function GET(
-  _req: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -41,19 +42,26 @@ export async function GET(
       return NextResponse.json({ error: "写真の保存先が未設定です" }, { status: 404 });
     }
 
+    // 変わっていなければここで終わり（dog-photo と同じ。一覧に N 枚あるので
+    // 効きが大きい — 以前は毎回 N×(DB 1往復 ＋ Blob 1往復 ＋ 全バイト) だった）
+    const etag = photoEtag(photo.pathname);
+    if (etagMatches(request.headers.get("if-none-match"), etag)) {
+      return new NextResponse(null, {
+        status: 304,
+        headers: photoHeaders(photo.contentType ?? "image/jpeg", etag),
+      });
+    }
+
     const { get } = await import("@vercel/blob");
     const result = await get(photo.pathname, { access: "private" });
     if (!result || result.statusCode !== 200) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
     return new NextResponse(result.stream, {
-      headers: {
-        "Content-Type": photo.contentType ?? result.blob.contentType ?? "image/jpeg",
-        // 共有端末でログアウト後に直接URLを開いても配信されないように
-        "Cache-Control": "private, no-store, max-age=0, must-revalidate",
-        "X-Content-Type-Options": "nosniff",
-        "Content-Disposition": "inline",
-      },
+      headers: photoHeaders(
+        photo.contentType ?? result.blob.contentType ?? "image/jpeg",
+        etag,
+      ),
     });
   } catch {
     return NextResponse.json({ error: "not found" }, { status: 404 });
