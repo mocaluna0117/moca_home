@@ -186,6 +186,11 @@ SQLite は `ALTER` で列の制約を変えられないので、スクリプト�
 `no such column` / `no such table` で開けません（ホームは新しい列を読むので
 サイトの入口ごと落ちます）。
 
+> 2026-09-07 の注文の添付では `order_files` テーブルを新設しました。
+> 列の追加もテーブルの作り直しも無いので、`npm run db:push:log` の出力に
+> `作成/確認: table order_files` と `index order_files_order_id_idx` が
+> 並ぶことだけ確認すれば済みます。
+>
 > 2026-09-06 の大型改修では、`meal_entries` / `usual_meals` に
 > `amount_value` / `amount_unit`、`medicines` に写真の4列を足し、
 > `product_short_names` テーブルを新設しました。列はすべて nullable なので
@@ -236,6 +241,14 @@ INSERT … SELECT → DROP → RENAME → インデックス再作成）。手�
 | `vaccinations/` | ワクチン接種証明書 | jpeg / png / webp / **heic / heif** | 20MB |
 | `profile/` | もかのプロフィール写真 | jpeg / png / webp | 8MB |
 | `medicines/` | 薬のパッケージ写真（1薬1枚） | jpeg / png / webp / heic / heif | 8MB |
+| `orders/` | 注文の添付（領収書のPDF・梱包の写真。1注文10件まで） | jpeg / png / webp / heic / heif / **pdf** | 10MB |
+
+**`orders/` だけが PDF を受けます。** 領収書や明細は PDF で来るためで、
+写真と違ってブラウザで縮小できません（`prepare-photo.ts` は canvas を使うので
+画像専用）。そのまま保存し、表示は `Content-Disposition: inline` に任せて
+ブラウザの PDF ビューアで開かせます。**この許可を他の接頭辞に広げないこと** —
+証明書やプロフィールの表示は `<img>` なので、描けないファイルが保存できて
+しまいます。判定は `src/lib/blob.ts` の `ALLOWED_ORDER_FILE_TYPES` 1箇所です。
 
 `profile/` が HEIC を受けないのは、変換に失敗した原本がそのまま上がったとき
 desktop の Chrome / Firefox が `<img>` で描けないためです（丸い顔写真が出ないのは、

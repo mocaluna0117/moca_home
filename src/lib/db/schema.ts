@@ -145,6 +145,48 @@ export const receivedBonuses = sqliteTable(
   (t) => [index("received_bonuses_order_id_idx").on(t.orderId)],
 );
 
+/**
+ * 注文に添付したファイル（領収書のPDF・梱包や商品の写真）。1注文に 0..n 件。
+ *
+ * 実体は Vercel Blob（private ストア）の "orders/" 接頭辞にあり、ここは
+ * メタデータだけを持つ。形は vaccination_photos と同じ（あちらが証明書の
+ * 1..n で、こちらが注文の 0..n）。**同期はこのテーブルに触らない** —
+ * scraper が upsert するのは orders の ordered_at / status / updated_at と
+ * 明細だけなので、添付が同期で消えることはない。
+ *
+ * **PDF も受ける**のがこのテーブルの新しいところ。写真はブラウザで縮小して
+ * から上げるが、PDF は縮小できないのでそのまま保存する（content_type で
+ * 見分け、表示側は写真なら拡大、PDF なら別タブで開く）。
+ *
+ * - pathname     : del() の削除キー。URL 形式の変更に強くするため独立した列
+ * - file_name    : 選んだときのファイル名。**PDF には必須の手がかり**
+ *                  （中身のサムネイルを出せないので、名前が唯一の識別）
+ * - width/height : 写真のときだけ入る。PDF は null
+ */
+export const orderFiles = sqliteTable(
+  "order_files",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    pathname: text("pathname").notNull(),
+    /** "application/pdf" か画像の MIME。表示の分岐はこれで決める */
+    contentType: text("content_type"),
+    sizeBytes: integer("size_bytes"),
+    /** 選んだときのファイル名（255文字まで詰める） */
+    fileName: text("file_name").notNull(),
+    /** 写真のときだけ。next/image には渡さないが、拡大表示の判断に使える */
+    width: integer("width"),
+    height: integer("height"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("order_files_order_id_idx").on(t.orderId)],
+);
+
+export type OrderFile = typeof orderFiles.$inferSelect;
+
 export type Order = typeof orders.$inferSelect;
 export type OrderItem = typeof orderItems.$inferSelect;
 export type Product = typeof products.$inferSelect;

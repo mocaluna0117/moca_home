@@ -1,5 +1,7 @@
 import "server-only";
 
+import { MAX_ORDER_FILE_BYTES } from "@/lib/order-files";
+
 /**
  * 写真の保存先の**許可リスト**。用途ごとに接頭辞を1つ持つ。
  *
@@ -10,13 +12,14 @@ import "server-only";
  * 判定する（下記 SAFE_LEAF）。
  *
  * 接頭辞は互いの接頭辞になっていない（vaccinations/ と profile/ と
- * medicines/）。これが崩れると parseBlobPath の最初に一致した1件を返す形が
- * 壊れるので、4つ目を足すときも必ず互いに素な語を選ぶ。
+ * medicines/ と orders/）。これが崩れると parseBlobPath の最初に一致した
+ * 1件を返す形が壊れるので、5つ目を足すときも必ず互いに素な語を選ぶ。
  */
 export const BLOB_PREFIXES = {
   vaccination: "vaccinations/",
   profile: "profile/",
   medicine: "medicines/",
+  order: "orders/",
 } as const;
 
 export type BlobKind = keyof typeof BLOB_PREFIXES;
@@ -63,6 +66,22 @@ export function parseBlobPath(
 }
 
 /**
+ * 注文の添付だけが受ける形式。**ここだけ画像以外（PDF）を通す。**
+ *
+ * 領収書や明細は PDF で来る。写真と違ってブラウザで縮小できない
+ * （prepare-photo.ts は canvas を使うので画像専用）ので、PDF はそのまま
+ * 保存し、表示は別タブに任せる（ルートが Content-Disposition: inline を
+ * 付けているので、ブラウザの PDF ビューアで開く）。
+ *
+ * **ここを他の用途に広げないこと。** 証明書やプロフィールに PDF を許すと、
+ * あちらの表示は <img> なので描けないファイルが保存できてしまう。
+ */
+export const ALLOWED_ORDER_FILE_TYPES = [
+  ...ALLOWED_PHOTO_TYPES,
+  "application/pdf",
+] as const;
+
+/**
  * 用途ごとの受け入れ規則。**profile は vaccination より狭い**。
  *
  * プロフィールが HEIC/HEIF を受けないのは、変換に失敗した原本がそのまま
@@ -84,6 +103,8 @@ export const PHOTO_RULES: Record<
     maxBytes: 8 * 1024 * 1024,
   },
   medicine: { types: ALLOWED_PHOTO_TYPES, maxBytes: 8 * 1024 * 1024 },
+  // 上限は src/lib/order-files.ts が持つ（画面の文と同じ値を指すため）
+  order: { types: ALLOWED_ORDER_FILE_TYPES, maxBytes: MAX_ORDER_FILE_BYTES },
 };
 
 /**

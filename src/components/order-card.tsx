@@ -1,4 +1,4 @@
-import { Gift } from "lucide-react";
+import { Gift, Paperclip } from "lucide-react";
 import Link from "next/link";
 
 import { BonusBadge, formatBonusSummary } from "@/components/bonus-badge";
@@ -68,6 +68,14 @@ export function OrderCard({
                 {formatBonusSummary(order.bonuses)}
               </Badge>
             )
+          )}
+          {/* 添付があることだけを言う（何が付いているかは詳細で見る）。
+              どの注文に領収書を入れたかを一覧で分かるようにするため */}
+          {order.fileCount > 0 && (
+            <Badge variant="outline" className="shrink-0 font-normal">
+              <Paperclip aria-hidden="true" />
+              添付 {order.fileCount}件
+            </Badge>
           )}
           <div className="ml-auto text-right">
             <div className="font-semibold tabular-nums">

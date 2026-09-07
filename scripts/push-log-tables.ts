@@ -35,6 +35,9 @@ const PUSH_TABLES = [
   // no such table: care_places で 500 になる
   "care_places",
   "care_courses",
+  // 注文の添付ファイル。忘れると本番だけ /orders と /orders/[id] が
+  // no such table: order_files で落ちる（一覧は添付の数を数えるので必ず読む）
+  "order_files",
   "heartworm_doses",
   "medicines",
   // これを忘れると本番だけ実行時に no such table: dog_profile になる。

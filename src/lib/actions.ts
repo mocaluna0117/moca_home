@@ -4,9 +4,18 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { actionError } from "@/lib/action-error";
+import {
+  ALLOWED_ORDER_FILE_TYPES,
+  PHOTO_RULES,
+  deleteBlobs,
+  isBlobUrl,
+  parseBlobPath,
+} from "@/lib/blob";
 import { db } from "@/lib/db";
 import { nowJstIso } from "@/lib/format";
+import { MAX_ORDER_FILES } from "@/lib/order-files";
 import {
+  orderFiles,
   orders,
   productFavorites,
   products,
@@ -244,5 +253,145 @@ export async function toggleFavorite(
       ok: false,
       error: actionError(err, "保存に失敗しました"),
     };
+  }
+}
+
+
+// ------------------------------------------------------- 注文の添付ファイル
+//
+// 4つ目の Blob の用途なので、**専用の Action を足す**（証明書用・プロフィール
+// 用・薬用の条件を緩めない）。緩めると、参照チェックが「ファイルを指しうる
+// 全テーブルの列挙」になり、1つ書き忘れた瞬間に生きたファイルが消える
+// （src/lib/actions-log.ts の discardUnattachedPhoto のコメント参照）。
+
+/** ファイル名の上限。表示のためだけに持つので、長すぎるものは詰める */
+const MAX_FILE_NAME = 255;
+
+export interface OrderFileInput {
+  orderId: string;
+  /** 本物のアップロード由来であることの検証にだけ使う */
+  url: string;
+  /** Blob の削除キー＝表示経路の鍵。これを保存する */
+  pathname: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  /** 選んだときのファイル名。PDF では唯一の識別なので必須 */
+  fileName: string;
+  /** 写真のときだけ。PDF は null */
+  width: number | null;
+  height: number | null;
+}
+
+/**
+ * 注文にファイルを紐づける。
+ *
+ * アップロードはブラウザ → Blob の直行でサーバがバイト列を見ないので、
+ * クライアントが渡すメタデータの検証はここが唯一の関門になる。
+ * 順番は setDogPhoto / attachVaccinationPhoto と同じ:
+ * 行の存在 → 枚数 → url → 保存先の種類 → 形式 → サイズ。
+ */
+export async function attachOrderFile(meta: OrderFileInput): Promise<ActionResult> {
+  try {
+    const order = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.id, meta.orderId))
+      .get();
+    if (!order) return { ok: false, error: "注文が見つかりません" };
+
+    const existing = await db
+      .select({ id: orderFiles.id })
+      .from(orderFiles)
+      .where(eq(orderFiles.orderId, meta.orderId))
+      .all();
+    if (existing.length >= MAX_ORDER_FILES) {
+      return { ok: false, error: `添付は${MAX_ORDER_FILES}件までです` };
+    }
+
+    if (!isBlobUrl(meta.url)) return { ok: false, error: "ファイルのURLが不正です" };
+    // 接頭辞の許可リストで用途まで見る。orders/ 以外はここに入って来られない
+    if (parseBlobPath(meta.pathname)?.kind !== "order") {
+      return { ok: false, error: "ファイルの保存先が不正です" };
+    }
+    if (
+      meta.contentType &&
+      !(ALLOWED_ORDER_FILE_TYPES as readonly string[]).includes(meta.contentType)
+    ) {
+      return { ok: false, error: "対応していない形式です（写真か PDF を選んでください）" };
+    }
+    const max = PHOTO_RULES.order.maxBytes;
+    if (meta.sizeBytes !== null && (meta.sizeBytes < 1 || meta.sizeBytes > max)) {
+      return { ok: false, error: "ファイルが大きすぎます" };
+    }
+    const fileName = meta.fileName.trim().slice(0, MAX_FILE_NAME) || "添付ファイル";
+
+    await db
+      .insert(orderFiles)
+      .values({
+        orderId: meta.orderId,
+        url: meta.url,
+        pathname: meta.pathname,
+        contentType: meta.contentType,
+        sizeBytes: meta.sizeBytes,
+        fileName,
+        width: meta.width,
+        height: meta.height,
+        createdAt: now(),
+      })
+      .run();
+
+    revalidatePath(`/orders/${meta.orderId}`);
+    revalidatePath("/orders");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: actionError(err, "添付に失敗しました") };
+  }
+}
+
+/** 添付を外す。行を消してから実体を消す（順序は detachVaccinationPhoto と同じ） */
+export async function detachOrderFile(fileId: number): Promise<ActionResult> {
+  try {
+    const removed = await db
+      .delete(orderFiles)
+      .where(eq(orderFiles.id, fileId))
+      .returning({ pathname: orderFiles.pathname, orderId: orderFiles.orderId })
+      .get();
+    if (!removed) return { ok: true };
+
+    await deleteBlobs([removed.pathname]);
+    revalidatePath(`/orders/${removed.orderId}`);
+    revalidatePath("/orders");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: actionError(err, "削除に失敗しました") };
+  }
+}
+
+/**
+ * 上げたが紐づけに失敗したファイルを捨てる（孤児の掃除）。
+ *
+ * **注文専用。** 参照を確かめるのも order_files だけで、他の用途も受けられる
+ * ように条件を緩めない（証明書用・プロフィール用・薬用にもそれぞれ専用がある）。
+ */
+export async function discardUnattachedOrderFile(
+  pathname: string,
+): Promise<ActionResult> {
+  try {
+    if (typeof pathname !== "string" || parseBlobPath(pathname)?.kind !== "order") {
+      return { ok: false, error: "ファイルの保存先が不正です" };
+    }
+    // DB が参照している pathname は絶対に消さない。クライアント由来の値を
+    // 受け取るので、この1本が「表示中のファイルを消させない」保証になる
+    const linked = await db
+      .select({ id: orderFiles.id })
+      .from(orderFiles)
+      .where(eq(orderFiles.pathname, pathname))
+      .get();
+    if (linked) return { ok: false, error: "このファイルは注文に紐づいています" };
+
+    await deleteBlobs([pathname]);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: actionError(err, "削除に失敗しました") };
   }
 }
