@@ -16,12 +16,18 @@ import type {
  */
 export function BonusBadge({ item }: { item: ItemBonusResult }) {
   if (!item.activated || !item.rule) return null;
+  /*
+    文は「この行におまけが**付いてくる**」と読めるようにする。
+    以前は `おまけ +1コ` で、買ったものの行に付いているのに「この行が
+    おまけ」と読めた（一覧でおまけと買ったものを分けたので、なおさら
+    紛らわしい）。数字と単位は変えない。
+  */
   const label =
     item.rule.kind === "gift"
       ? `${item.giftLabel ?? "ギフト"}プレゼント`
       : item.rule.kind === "included"
         ? "おまけ同梱"
-        : `おまけ +${item.bonusCount}コ`;
+        : `おまけ${item.bonusCount}コ付き`;
   return (
     <Badge
       variant="secondary"

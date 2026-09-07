@@ -89,6 +89,13 @@ export function OrderCard({
         </div>
       </CardHeader>
       <CardContent className="pt-4">
+        {/* 見出しは**おまけがある注文だけ**に出す。無い注文では全部が
+            買ったものなので、1行足すだけ場所を取る */}
+        {order.receivedBonuses.length > 0 && (
+          <p className="mb-2 text-xs font-medium text-muted-foreground">
+            買ったもの
+          </p>
+        )}
         <ul className="flex flex-col gap-3">
           {visible.map((item) => (
             <li key={item.id} className="flex items-start gap-3">
@@ -146,7 +153,25 @@ export function OrderCard({
               </div>
             </li>
           ))}
-          {order.receivedBonuses.map((r, i) => {
+        </ul>
+        {/*
+          おまけは**別のまとまり**にして、薄い面と見出しで囲む。以前は
+          1本の罫線だけで買ったものの下に続けていたので、値段の有無を
+          読み比べないとどれがおまけか分からなかった（ひとめで分からない
+          という指摘を受けた）。カードに出るのは
+            買ったもの → 見出し → 面に載ったおまけ
+          の順で、行の中の小さな印には頼らない。
+        */}
+        {order.receivedBonuses.length > 0 && (
+          <div className="mt-3 rounded-lg bg-muted/60 p-2.5">
+            <p className="mb-2 flex flex-wrap items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Gift className="size-3.5" aria-hidden="true" />
+              届いたおまけ
+              <span className="tabular-nums">{order.receivedTotal}点</span>
+              <span className="font-normal">（お店からもらったもの）</span>
+            </p>
+            <ul className="flex flex-col gap-3">
+          {order.receivedBonuses.map((r) => {
             /*
               自分で撮った写真は商品画像より**先**に出す（注文詳細の
               「届いたおまけ」と同じ順序）。商品リストにないおまけは商品画像が
@@ -155,16 +180,7 @@ export function OrderCard({
             */
             const photoSrcs = r.photos.map((p) => `/api/bonus-photos/${p.id}`);
             return (
-            <li
-              key={`received-${r.id}`}
-              // Only the first freebie gets a rule — it marks where the
-              // purchased items end; the rest read as one continuous list.
-              className={
-                i === 0
-                  ? "flex items-start gap-3 border-t pt-3"
-                  : "flex items-start gap-3"
-              }
-            >
+            <li key={`received-${r.id}`} className="flex items-start gap-3">
               <div className="relative size-20 shrink-0 overflow-hidden rounded-md border bg-muted sm:size-24">
                 {photoSrcs.length > 0 ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -235,10 +251,8 @@ export function OrderCard({
                   </p>
                 )}
                 <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
-                  <Badge variant="secondary" className="font-normal">
-                    <Gift aria-hidden="true" />
-                    おまけ
-                  </Badge>
+                  {/* 「おまけ」の印はこの行には出さない（囲みの見出しが
+                      言っている）。値段が無く ×N だけなのも手がかりになる */}
                   ×{r.quantity}
                   {r.productId !== null && (
                     <span className="relative z-20 inline-flex">
@@ -255,7 +269,9 @@ export function OrderCard({
             </li>
             );
           })}
-        </ul>
+            </ul>
+          </div>
+        )}
         {order.receivedTotal === 0 && order.bonuses.pools
           .filter(
             (p) =>
