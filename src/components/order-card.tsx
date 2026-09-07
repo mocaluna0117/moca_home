@@ -146,7 +146,15 @@ export function OrderCard({
               </div>
             </li>
           ))}
-          {order.receivedBonuses.map((r, i) => (
+          {order.receivedBonuses.map((r, i) => {
+            /*
+              自分で撮った写真は商品画像より**先**に出す（注文詳細の
+              「届いたおまけ」と同じ順序）。商品リストにないおまけは商品画像が
+              無いので、ここが唯一の絵になる — 一覧で贈り物アイコンのままだと、
+              写真を付けたのに何も変わらないように見える。
+            */
+            const photoSrcs = r.photos.map((p) => `/api/bonus-photos/${p.id}`);
+            return (
             <li
               key={`received-${r.id}`}
               // Only the first freebie gets a rule — it marks where the
@@ -158,7 +166,19 @@ export function OrderCard({
               }
             >
               <div className="relative size-20 shrink-0 overflow-hidden rounded-md border bg-muted sm:size-24">
-                {r.productId !== null ? (
+                {photoSrcs.length > 0 ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={photoSrcs[0]}
+                    alt=""
+                    // 実寸を書いて枠を確保し、画面外は取りに行かない
+                    width={96}
+                    height={96}
+                    loading="lazy"
+                    decoding="async"
+                    className="size-full object-cover"
+                  />
+                ) : r.productId !== null ? (
                   <ImageWithFallback
                     src={r.imageUrl}
                     alt={r.label}
@@ -173,15 +193,32 @@ export function OrderCard({
                     />
                   </div>
                 )}
-                {r.productId !== null && r.imageUrl && (
-                  // 上の明細と同じ（z-20 でカード全体のリンクより手前）
+                {/*
+                  拡大は角のボタンから（カード全体がリンクなので、絵そのものを
+                  押せるようにすると押した先が2つある要素になる。上の明細と
+                  同じ作法で z-20 でリンクより手前に出す）。
+                  写真が複数あるときは、この1つで全部を送って見られる。
+                */}
+                {photoSrcs.length > 0 ? (
                   <span className="absolute right-0.5 bottom-0.5 z-20 rounded-md bg-background/90">
                     <ImagePreview
                       variant="corner"
-                      images={[r.imageUrl]}
+                      images={photoSrcs}
                       caption={r.label}
+                      title="おまけの写真"
                     />
                   </span>
+                ) : (
+                  r.productId !== null &&
+                  r.imageUrl && (
+                    <span className="absolute right-0.5 bottom-0.5 z-20 rounded-md bg-background/90">
+                      <ImagePreview
+                        variant="corner"
+                        images={[r.imageUrl]}
+                        caption={r.label}
+                      />
+                    </span>
+                  )
                 )}
               </div>
               <div className="min-w-0 flex-1">
@@ -216,7 +253,8 @@ export function OrderCard({
                 </p>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
         {order.receivedTotal === 0 && order.bonuses.pools
           .filter(
