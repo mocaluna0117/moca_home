@@ -33,9 +33,20 @@ export interface OrderItemWithBonus extends OrderItem {
   bonus: ItemBonusResult;
 }
 
-export interface ReceivedBonusRow extends ReceivedBonus {
+/**
+ * 表示用のおまけ1行。**写真の pathname は載せない** — Blob の削除キーなので、
+ * クライアントに渡る形（このまま OrderCard とダイアログへ流れる）には
+ * 「あるか」と「?v= の種」だけを置く（getMedicines と同じ畳み方）。
+ */
+export interface ReceivedBonusRow
+  extends Omit<
+    ReceivedBonus,
+    "photoPathname" | "photoContentType" | "photoSizeBytes"
+  > {
   /** first products.image_urls entry when product_id is set */
   imageUrl: string | null;
+  /** おまけの写真があるか（実体は /api/bonus-photos/[id] が返す） */
+  hasPhoto: boolean;
 }
 
 export interface OrderWithItems extends Order {
@@ -78,7 +89,24 @@ async function fetchReceivedByOrder(
     .all();
   const map = new Map<string, ReceivedBonusRow[]>();
   for (const r of rows) {
-    const entry: ReceivedBonusRow = { ...r.row, imageUrl: firstImage(r.productImages) };
+    /*
+      **列を1つずつ書き写す。** `...r.row` を撒くと、写真の pathname や
+      あとから足した列がそのままクライアントへ運ばれる（この行は OrderCard と
+      おまけのダイアログに渡る）。ここに書いた列だけが外に出る。
+    */
+    const entry: ReceivedBonusRow = {
+      id: r.row.id,
+      orderId: r.row.orderId,
+      productId: r.row.productId,
+      label: r.row.label,
+      quantity: r.row.quantity,
+      note: r.row.note,
+      photoUpdatedAt: r.row.photoUpdatedAt,
+      createdAt: r.row.createdAt,
+      updatedAt: r.row.updatedAt,
+      imageUrl: firstImage(r.productImages),
+      hasPhoto: r.row.photoPathname !== null,
+    };
     const list = map.get(entry.orderId);
     if (list) list.push(entry);
     else map.set(entry.orderId, [entry]);
@@ -676,6 +704,25 @@ export async function getOrderFiles(orderId: string): Promise<OrderFileRow[]> {
 }
 
 /** 添付1件の実体。/api/order-files/[id] だけが呼ぶ */
+/**
+ * おまけの写真1枚。**url は返さない**（private ストアの URL は誰も直接
+ * 開けない）。/api/bonus-photos/[id] だけが使う。
+ */
+export async function getReceivedBonusPhoto(
+  id: number,
+): Promise<{ pathname: string; contentType: string | null } | null> {
+  const row = await db
+    .select({
+      pathname: receivedBonuses.photoPathname,
+      contentType: receivedBonuses.photoContentType,
+    })
+    .from(receivedBonuses)
+    .where(eq(receivedBonuses.id, id))
+    .get();
+  if (!row?.pathname) return null;
+  return { pathname: row.pathname, contentType: row.contentType };
+}
+
 export async function getOrderFile(
   id: number,
 ): Promise<{ pathname: string; contentType: string | null; fileName: string } | null> {

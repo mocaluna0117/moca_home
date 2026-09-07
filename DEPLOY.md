@@ -186,6 +186,13 @@ SQLite は `ALTER` で列の制約を変えられないので、スクリプト�
 `no such column` / `no such table` で開けません（ホームは新しい列を読むので
 サイトの入口ごと落ちます）。
 
+> 2026-09-07 のおまけの写真では `received_bonuses` に写真の4列
+> （`photo_pathname` / `photo_content_type` / `photo_size_bytes` /
+> `photo_updated_at`）を足しました。すべて nullable なので `syncColumns` が
+> ALTER で届けます。**このテーブルを `PUSH_TABLES` に足したのもこの回です**
+> （それまで一覧に無かったので、列を足しても本番に届きませんでした）。
+> 出力に `列を追加: received_bonuses.photo_pathname` の4行が並ぶことを確認します。
+>
 > 2026-09-07 の注文の添付では `order_files` テーブルを新設しました。
 > 列の追加もテーブルの作り直しも無いので、`npm run db:push:log` の出力に
 > `作成/確認: table order_files` と `index order_files_order_id_idx` が
@@ -242,6 +249,7 @@ INSERT … SELECT → DROP → RENAME → インデックス再作成）。手�
 | `profile/` | もかのプロフィール写真 | jpeg / png / webp | 8MB |
 | `medicines/` | 薬のパッケージ写真（1薬1枚） | jpeg / png / webp / heic / heif | 8MB |
 | `orders/` | 注文の添付（領収書のPDF・梱包の写真。1注文10件まで） | jpeg / png / webp / heic / heif / **pdf** | 10MB |
+| `bonuses/` | 届いたおまけの写真（1行1枚） | jpeg / png / webp / heic / heif | 8MB |
 
 **`orders/` だけが PDF を受けます。** 領収書や明細は PDF で来るためで、
 写真と違ってブラウザで縮小できません（`prepare-photo.ts` は canvas を使うので

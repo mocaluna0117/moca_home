@@ -110,16 +110,20 @@ export async function saveReceivedBonuses(
       resolved.push({ id: row.id, ...r.value });
     }
 
+    /*
+      消える行が持っていた写真の pathname。**トランザクションの外で消す** —
+      Blob の削除は取り消せないので、コミットしてから撃つ（行が残ったのに
+      実体だけ消える状態を作らない）。
+    */
+    const orphaned: string[] = [];
+
     await db.transaction(async (tx) => {
-      const existingIds = new Set(
-        (
-          await tx
-            .select({ id: receivedBonuses.id })
-            .from(receivedBonuses)
-            .where(eq(receivedBonuses.orderId, orderId))
-            .all()
-        ).map((r) => r.id),
-      );
+      const existingRows = await tx
+        .select({ id: receivedBonuses.id, pathname: receivedBonuses.photoPathname })
+        .from(receivedBonuses)
+        .where(eq(receivedBonuses.orderId, orderId))
+        .all();
+      const existingIds = new Set(existingRows.map((r) => r.id));
       const keptIds = new Set<number>();
 
       for (const row of resolved) {
@@ -152,13 +156,16 @@ export async function saveReceivedBonuses(
         }
       }
 
-      for (const id of existingIds) {
-        if (!keptIds.has(id)) {
-          await tx.delete(receivedBonuses).where(eq(receivedBonuses.id, id)).run();
-        }
+      for (const row of existingRows) {
+        if (keptIds.has(row.id)) continue;
+        // 行と一緒に写真も消す。ここで拾い忘れると、二度と表示されない
+        // 実体がストアに残り続ける（誰も pathname を知らないので消せない）
+        if (row.pathname) orphaned.push(row.pathname);
+        await tx.delete(receivedBonuses).where(eq(receivedBonuses.id, row.id)).run();
       }
     });
 
+    if (orphaned.length > 0) await deleteBlobs(orphaned);
     revalidatePath(`/orders/${orderId}`);
     revalidatePath("/orders");
     return { ok: true };
@@ -177,12 +184,14 @@ export async function deleteReceivedBonus(
 ): Promise<ActionResult> {
   try {
     const row = await db
-      .select({ id: receivedBonuses.id })
+      .select({ id: receivedBonuses.id, pathname: receivedBonuses.photoPathname })
       .from(receivedBonuses)
       .where(eq(receivedBonuses.id, id))
       .get();
     if (!row) return { ok: false, error: "記録が見つかりません" };
     await db.delete(receivedBonuses).where(eq(receivedBonuses.id, id)).run();
+    // 行が消えたら写真の実体も消す（best-effort。DB は既にコミット済み）
+    if (row.pathname) await deleteBlobs([row.pathname]);
     revalidatePath(`/orders/${orderId}`);
     revalidatePath("/orders");
     return { ok: true };
@@ -190,6 +199,168 @@ export async function deleteReceivedBonus(
     return {
       ok: false,
       error: actionError(err, "削除に失敗しました"),
+    };
+  }
+}
+
+// --------------------------------------------------------- おまけの写真
+//
+// 5つ目の Blob の用途なので、**専用の Action を足す**（証明書用・プロフィール
+// 用・薬用・注文の添付用の条件を緩めない）。緩めると、参照チェックが
+// 「写真を指しうる全テーブルの列挙」になり、1つ書き忘れた瞬間に生きた
+// 写真が消える（src/lib/actions-log.ts の discardUnattachedPhoto のコメント）。
+//
+// 形は薬のパッケージ写真（actions-care.ts の setMedicinePhoto）と同じ —
+// 1行に高々1枚で、差し替えたら古い実体を消す。
+
+export interface ReceivedBonusPhotoInput {
+  bonusId: number;
+  /** 本物のアップロード由来であることの検証にだけ使う（列には保存しない） */
+  url: string;
+  /** Blob の削除キー＝表示経路の鍵。これだけを保存する */
+  pathname: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+}
+
+/**
+ * おまけの行に写真を付ける（1行1枚。差し替えると古い写真は消す）。
+ *
+ * アップロードはブラウザ → Blob の直行でサーバがバイト列を見ないので、
+ * クライアントが渡すメタデータの検証はここが唯一の関門になる。
+ * 順番は setMedicinePhoto と同じ: url → 保存先の種類 → 形式 → サイズ →
+ * 行の存在。
+ */
+export async function setReceivedBonusPhoto(
+  meta: ReceivedBonusPhotoInput,
+): Promise<ActionResult> {
+  try {
+    if (!isBlobUrl(meta.url)) return { ok: false, error: "写真のURLが不正です" };
+    if (parseBlobPath(meta.pathname)?.kind !== "bonus") {
+      return { ok: false, error: "写真の保存先が不正です" };
+    }
+    const rules = PHOTO_RULES.bonus;
+    if (meta.contentType && !rules.types.includes(meta.contentType)) {
+      return { ok: false, error: "対応していない画像形式です" };
+    }
+    if (
+      meta.sizeBytes !== null &&
+      (meta.sizeBytes < 1 || meta.sizeBytes > rules.maxBytes)
+    ) {
+      return { ok: false, error: "画像サイズが大きすぎます" };
+    }
+    if (!Number.isInteger(meta.bonusId)) {
+      return { ok: false, error: "おまけのIDが不正です" };
+    }
+
+    // orderId も一緒に引く。どのページを作り直すかはこの行だけが知っている
+    const existing = await db
+      .select({
+        orderId: receivedBonuses.orderId,
+        pathname: receivedBonuses.photoPathname,
+      })
+      .from(receivedBonuses)
+      .where(eq(receivedBonuses.id, meta.bonusId))
+      .get();
+    if (!existing) return { ok: false, error: "おまけの記録が見つかりません" };
+
+    await db
+      .update(receivedBonuses)
+      .set({
+        photoPathname: meta.pathname,
+        photoContentType: meta.contentType,
+        photoSizeBytes: meta.sizeBytes,
+        // ?v= のキャッシュ破りの種。差し替えたことがブラウザに伝わる唯一の値
+        photoUpdatedAt: now(),
+        updatedAt: now(),
+      })
+      .where(eq(receivedBonuses.id, meta.bonusId))
+      .run();
+
+    // ここから best-effort（DB は既にコミット済み）。同じ pathname は消さない —
+    // 再送で同じ実体を指したときに、いま上げた写真を落としてしまう
+    if (existing.pathname && existing.pathname !== meta.pathname) {
+      await deleteBlobs([existing.pathname]);
+    }
+    revalidatePath(`/orders/${existing.orderId}`);
+    revalidatePath("/orders");
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: actionError(err, "写真の保存に失敗しました"),
+    };
+  }
+}
+
+/** 写真を外す。すでに無ければ何もしない（何度押しても同じ結果）。 */
+export async function removeReceivedBonusPhoto(id: number): Promise<ActionResult> {
+  try {
+    if (!Number.isInteger(id)) return { ok: false, error: "おまけのIDが不正です" };
+    const existing = await db
+      .select({
+        orderId: receivedBonuses.orderId,
+        pathname: receivedBonuses.photoPathname,
+      })
+      .from(receivedBonuses)
+      .where(eq(receivedBonuses.id, id))
+      .get();
+    if (!existing) return { ok: false, error: "おまけの記録が見つかりません" };
+    if (!existing.pathname) return { ok: true };
+
+    await db
+      .update(receivedBonuses)
+      .set({
+        photoPathname: null,
+        photoContentType: null,
+        photoSizeBytes: null,
+        photoUpdatedAt: null,
+        updatedAt: now(),
+      })
+      .where(eq(receivedBonuses.id, id))
+      .run();
+
+    await deleteBlobs([existing.pathname]);
+    revalidatePath(`/orders/${existing.orderId}`);
+    revalidatePath("/orders");
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: actionError(err, "写真の削除に失敗しました"),
+    };
+  }
+}
+
+/**
+ * 上げたが紐づけに失敗した写真を捨てる（孤児の掃除）。
+ *
+ * **おまけ専用。** 参照を確かめるのも received_bonuses だけで、他の用途も
+ * 受けられるように条件を緩めない（証明書用・プロフィール用・薬用・
+ * 注文の添付用にもそれぞれ専用がある）。
+ */
+export async function discardUnattachedBonusPhoto(
+  pathname: string,
+): Promise<ActionResult> {
+  try {
+    if (typeof pathname !== "string" || parseBlobPath(pathname)?.kind !== "bonus") {
+      return { ok: false, error: "写真の保存先が不正です" };
+    }
+    // DB が参照している pathname は絶対に消さない。クライアント由来の値を
+    // 受け取るので、この1本が「表示中の写真を消させない」保証になる
+    const linked = await db
+      .select({ id: receivedBonuses.id })
+      .from(receivedBonuses)
+      .where(eq(receivedBonuses.photoPathname, pathname))
+      .get();
+    if (linked) return { ok: false, error: "この写真はおまけに紐づいています" };
+
+    await deleteBlobs([pathname]);
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: actionError(err, "写真の削除に失敗しました"),
     };
   }
 }

@@ -253,6 +253,14 @@ export function ReceivedBonusDialog({
                     placeholder="おまけの名前（例: ジャーキー小袋）"
                     aria-label="おまけの名前"
                   />
+                  {/*
+                    自由入力の行には商品画像が無い。写真はこのダイアログでは
+                    付けない（行がまだ無いうちに上げると、保存せずに閉じた
+                    ぶんが実体だけ残る）ので、どこで付けるかを言う。
+                  */}
+                  <p className="text-xs text-muted-foreground">
+                    保存すると、「届いたおまけ」の一覧から写真を付けられます。
+                  </p>
                   <button
                     type="button"
                     className="w-fit text-xs text-muted-foreground underline"
