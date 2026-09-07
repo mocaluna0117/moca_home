@@ -139,6 +139,28 @@ export const receivedBonuses = sqliteTable(
     label: text("label").notNull(),
     quantity: integer("quantity").notNull().default(1),
     note: text("note"),
+    /**
+     * おまけの写真（1行に高々1枚）。実体は Vercel Blob の "bonuses/" 接頭辞に
+     * あり、ここはメタデータだけを持つ。列の形は medicines の写真列と同じ
+     * （1行1枚なので子テーブルを作らない）。
+     *
+     * **要る理由**: 自由入力のおまけ（カタログに無いもらい物）は products を
+     * 指さないので商品画像が無く、一覧では贈り物アイコンだけになる。
+     * 何をもらったのかが記録から読めないので、写真で残せるようにする。
+     * カタログの商品を選んだ行にも付けられる（届いた実物が商品画像と
+     * 違うことがある）。写真があればそちらを商品画像より先に出す。
+     *
+     * url は**保存しない**。private ストアの URL は誰も直接開けず、表示は
+     * /api/bonus-photos/[id]、削除は pathname で足りる（medicines と同じ）。
+     * pathname は削除キーなので**クライアントには出さない**
+     * （queries.ts の ReceivedBonusRow が hasPhoto に畳んでいる）。
+     */
+    photoPathname: text("photo_pathname"),
+    photoContentType: text("photo_content_type"),
+    /** 添付時の検証値の控え（診断用） */
+    photoSizeBytes: integer("photo_size_bytes"),
+    /** +09:00 付き ISO。?v= のキャッシュ破り */
+    photoUpdatedAt: text("photo_updated_at"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

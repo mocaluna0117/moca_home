@@ -20,6 +20,11 @@ export const BLOB_PREFIXES = {
   profile: "profile/",
   medicine: "medicines/",
   order: "orders/",
+  /**
+   * おまけの写真。orders/ に混ぜない — あちらは PDF も受けるので、
+   * 混ぜると「おまけの写真」として PDF が通る道ができる。
+   */
+  bonus: "bonuses/",
 } as const;
 
 export type BlobKind = keyof typeof BLOB_PREFIXES;
@@ -105,6 +110,8 @@ export const PHOTO_RULES: Record<
   medicine: { types: ALLOWED_PHOTO_TYPES, maxBytes: 8 * 1024 * 1024 },
   // 上限は src/lib/order-files.ts が持つ（画面の文と同じ値を指すため）
   order: { types: ALLOWED_ORDER_FILE_TYPES, maxBytes: MAX_ORDER_FILE_BYTES },
+  // おまけは**写真だけ**。ALLOWED_ORDER_FILE_TYPES（PDF を含む）は使わない
+  bonus: { types: ALLOWED_PHOTO_TYPES, maxBytes: 8 * 1024 * 1024 },
 };
 
 /**

@@ -38,6 +38,10 @@ const PUSH_TABLES = [
   // 注文の添付ファイル。忘れると本番だけ /orders と /orders/[id] が
   // no such table: order_files で落ちる（一覧は添付の数を数えるので必ず読む）
   "order_files",
+  // おまけの記録。テーブル自体は最初の移行で本番にあるが、写真の列
+  // （photo_pathname ほか）を届けるのはこの仕組みなので一覧に入れる。
+  // 忘れると本番だけ /orders が no such column: photo_pathname で落ちる
+  "received_bonuses",
   "heartworm_doses",
   "medicines",
   // これを忘れると本番だけ実行時に no such table: dog_profile になる。
