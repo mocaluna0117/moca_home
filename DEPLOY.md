@@ -54,6 +54,15 @@ npm run db:migrate
 最後に件数の照合結果が出ます（orders 69 / products 1480 など）。
 各テーブルを空にしてから入れ直すので、**途中で失敗しても再実行すれば復旧**します。
 
+> **これは最初の引っ越し専用です。運用中に流さないこと。** 空にする対象に
+> `orders` と `received_bonuses` が入っており、外部キーの連鎖で
+> `order_files` と `received_bonus_photos`（注文の添付・おまけの写真）まで
+> 消えます。この2つはコピー対象に入っていないので入れ直されず、Blob に
+> 上げた実体だけがストアに残り続けます（誰も pathname を知らないので
+> 消せません）。写真を付けたあとにやり直したくなったら、先に
+> `npx vercel blob list` で控えるか、この2つのテーブルもコピー対象に
+> 足してください。
+
 ## 4. Vercel へデプロイ（あなたの操作）
 
 ```bash
@@ -186,6 +195,21 @@ SQLite は `ALTER` で列の制約を変えられないので、スクリプト�
 `no such column` / `no such table` で開けません（ホームは新しい列を読むので
 サイトの入口ごと落ちます）。
 
+> 2026-09-08 のおまけの写真（複数枚化）では `received_bonus_photos` テーブルを
+> 新設しました（`PUSH_TABLES` に追加済み）。**前日に足した `received_bonuses` の
+> 写真4列は、ローカルだけ落として本番はそのまま残します。** 理由は2つ:
+> `syncColumns` は「ローカルにあって本番に無い列」を足すだけで、逆向き
+> （ローカルで落ちた列）には何もしないので放置しても永久に無害であること、
+> そして本番へ `DROP COLUMN` を手で流すのは取り消せない操作で、得るものが
+> 「誰も読まない列が消える」だけであること（写真のデータは0件でした）。
+> **列を落とす変更だけは「コードを先、スキーマを後」**になります — 旧コードが
+> その列を SELECT しているので、先に落とすと `/orders` が
+> `no such column` で落ちます。
+>
+> また `received_bonuses` はこれで**子を持つ親**になったので、今後この表の
+> `NOT NULL` を外す変更は `rebuildIfLoosened` が「要手動」と出して飛ばします
+> （親を作り直すと子の行が連鎖削除されるため）。列を足すだけなら届きます。
+>
 > 2026-09-07 のおまけの写真では `received_bonuses` に写真の4列
 > （`photo_pathname` / `photo_content_type` / `photo_size_bytes` /
 > `photo_updated_at`）を足しました。すべて nullable なので `syncColumns` が
@@ -249,7 +273,7 @@ INSERT … SELECT → DROP → RENAME → インデックス再作成）。手�
 | `profile/` | もかのプロフィール写真 | jpeg / png / webp | 8MB |
 | `medicines/` | 薬のパッケージ写真（1薬1枚） | jpeg / png / webp / heic / heif | 8MB |
 | `orders/` | 注文の添付（領収書のPDF・梱包の写真。1注文10件まで） | jpeg / png / webp / heic / heif / **pdf** | 10MB |
-| `bonuses/` | 届いたおまけの写真（1行1枚） | jpeg / png / webp / heic / heif | 8MB |
+| `bonuses/` | 届いたおまけの写真（「商品リストにない」おまけ1件に8枚まで） | jpeg / png / webp / heic / heif | 8MB |
 
 **`orders/` だけが PDF を受けます。** 領収書や明細は PDF で来るためで、
 写真と違ってブラウザで縮小できません（`prepare-photo.ts` は canvas を使うので

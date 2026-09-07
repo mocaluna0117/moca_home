@@ -139,32 +139,78 @@ export const receivedBonuses = sqliteTable(
     label: text("label").notNull(),
     quantity: integer("quantity").notNull().default(1),
     note: text("note"),
-    /**
-     * おまけの写真（1行に高々1枚）。実体は Vercel Blob の "bonuses/" 接頭辞に
-     * あり、ここはメタデータだけを持つ。列の形は medicines の写真列と同じ
-     * （1行1枚なので子テーブルを作らない）。
-     *
-     * **要る理由**: 自由入力のおまけ（カタログに無いもらい物）は products を
-     * 指さないので商品画像が無く、一覧では贈り物アイコンだけになる。
-     * 何をもらったのかが記録から読めないので、写真で残せるようにする。
-     * カタログの商品を選んだ行にも付けられる（届いた実物が商品画像と
-     * 違うことがある）。写真があればそちらを商品画像より先に出す。
-     *
-     * url は**保存しない**。private ストアの URL は誰も直接開けず、表示は
-     * /api/bonus-photos/[id]、削除は pathname で足りる（medicines と同じ）。
-     * pathname は削除キーなので**クライアントには出さない**
-     * （queries.ts の ReceivedBonusRow が hasPhoto に畳んでいる）。
-     */
-    photoPathname: text("photo_pathname"),
-    photoContentType: text("photo_content_type"),
-    /** 添付時の検証値の控え（診断用） */
-    photoSizeBytes: integer("photo_size_bytes"),
-    /** +09:00 付き ISO。?v= のキャッシュ破り */
-    photoUpdatedAt: text("photo_updated_at"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [index("received_bonuses_order_id_idx").on(t.orderId)],
+);
+/*
+  この表は received_bonus_photos から参照される**親**になった。つまり
+  scripts/push-log-tables.ts の rebuildIfLoosened は、ここの NOT NULL を
+  外す変更を自動では届けない（`referencedBy` が空でないテーブルは
+  「要手動」と出して飛ばす。親を作り直すと子の行が連鎖削除されるため）。
+  列を足すだけなら今までどおり届く。
+
+  行を手で消すときは `sqlite3` の既定が `foreign_keys = 0` であることに注意
+  （子の行が残る）。アプリ経由（@libsql/client）は既定で有効なので、
+  cascade はちゃんと効く。
+*/
+
+/**
+ * おまけの写真。1つのおまけに 0..n 枚。実体は Vercel Blob（private ストア）の
+ * "bonuses/" 接頭辞にあり、ここはメタデータだけを持つ。
+ *
+ * **要る理由**: 商品リストから選べないおまけ（カタログに無いもらい物）は
+ * products を指さないので商品画像が無く、一覧では贈り物アイコンだけになる。
+ * 何をもらったのかが記録から読めないので、実物の写真で残せるようにする。
+ * だから**写真を付けられるのは product_id が null の行だけ**（新しく付ける
+ * ほうの制限で、行が後からカタログの商品に変わっても写真は残す — 撮ったのは
+ * 実際に届いた物なので）。判定は actions.ts の attachReceivedBonusPhoto。
+ *
+ * **列ではなく子テーブルにする理由**: 1枚では足りなかった（袋の表と裏、
+ * 数種類のおまけが1袋で来る）。列で複数枚は持てないので、証明書の写真
+ * （vaccination_photos）と注文の添付（order_files）と同じ形にする。
+ *
+ * 行は**書き換えない**（付ける／外すだけ）。だから `?v=` のキャッシュ破りが
+ * 要らず、新しい写真は新しい id になる（列で持っていた頃は差し替えのたびに
+ * photo_updated_at を進める必要があった）。
+ *
+ * - pathname : del() の削除キー＝表示経路の鍵。**クライアントには出さない**
+ *              （queries.ts の ReceivedBonusRow は id と実寸だけを渡す）
+ * - url は持たない。private ストアの URL は誰も直接開けず、表示は
+ *   /api/bonus-photos/[id]、削除は pathname で足りる
+ * - width/height : 縮小後の実寸（拡大表示の判断に使える）
+ */
+export const receivedBonusPhotos = sqliteTable(
+  "received_bonus_photos",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bonusId: integer("bonus_id")
+      .notNull()
+      .references(() => receivedBonuses.id, { onDelete: "cascade" }),
+    pathname: text("pathname").notNull(),
+    contentType: text("content_type"),
+    /** 添付時の検証値の控え（診断用） */
+    sizeBytes: integer("size_bytes"),
+    width: integer("width"),
+    height: integer("height"),
+    createdAt: text("created_at").notNull(),
+  },
+  // 索引に名前を付けるのは scripts/push-log-tables.ts が sqlite_master の
+  // CREATE 文を再生する仕組みで、無名だと本番に届かないから
+  (t) => [
+    index("received_bonus_photos_bonus_id_idx").on(t.bonusId),
+    /*
+      同じ実体を指す2行目を作らせない。**再送のため**に要る — 電波の悪い所で
+      「上げる → 紐づける」の紐づけが届いたのに応答が返らず、クライアントが
+      もう一度送ると、同じ pathname の行が2つできる。すると一覧に同じ写真が
+      2枚並び、片方の✕でもう片方のバイト列まで消える（Blob は1つなので）。
+      attachReceivedBonusPhoto の onConflictDoNothing と対で効く。
+      vaccination_photos / order_files には同じ穴が残っているが、
+      あちらを直すのは今回の範囲外。
+    */
+    uniqueIndex("received_bonus_photos_pathname_idx").on(t.pathname),
+  ],
 );
 
 /**
@@ -215,6 +261,7 @@ export type Product = typeof products.$inferSelect;
 export type SyncRun = typeof syncRuns.$inferSelect;
 
 export type ReceivedBonus = typeof receivedBonuses.$inferSelect;
+export type ReceivedBonusPhoto = typeof receivedBonusPhotos.$inferSelect;
 
 // ------------------------------------------------------------- お気に入り
 //

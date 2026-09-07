@@ -14,7 +14,6 @@ import { ProductName } from "@/components/product-name";
 import { OrderFilesSection } from "@/components/order-files-section";
 import { ReceivedBonusSection } from "@/components/received-bonus-section";
 import { StatusBadge } from "@/components/status-badge";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -154,86 +153,14 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
                   </TableCell>
                 </TableRow>
               ))}
-              {order.receivedBonuses.map((r) => (
-                <TableRow key={`received-${r.id}`} className="text-muted-foreground">
-                  <TableCell>
-                    <ImagePreview
-                      images={r.productId !== null ? [r.imageUrl] : []}
-                      caption={r.label}
-                      className="relative size-12 overflow-hidden rounded border bg-muted"
-                    >
-                      {r.productId !== null ? (
-                        <ImageWithFallback
-                          src={r.imageUrl}
-                          alt={r.label}
-                          sizes="48px"
-                          className="size-full"
-                          iconClassName="size-4"
-                        />
-                      ) : (
-                        <div className="flex size-full items-center justify-center">
-                          <Gift className="size-4" aria-hidden="true" />
-                        </div>
-                      )}
-                    </ImagePreview>
-                  </TableCell>
-                  <TableCell className="max-w-md whitespace-normal">
-                    {r.productId !== null ? (
-                      <Link
-                        href={`/products/${r.productId}`}
-                        className="text-sm leading-snug hover:underline"
-                      >
-                        <ProductName name={r.label} />
-                      </Link>
-                    ) : (
-                      <span className="text-sm leading-snug">
-                        <ProductName name={r.label} />
-                      </span>
-                    )}
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      {r.productId !== null && (
-                        <FavoriteButton
-                          productId={r.productId}
-                          isFavorite={favoriteIds.has(r.productId)}
-                          size="sm"
-                        />
-                      )}
-                      <Badge variant="secondary" className="font-normal">
-                        <Gift aria-hidden="true" />
-                        おまけ
-                      </Badge>
-                      {r.note && (
-                        <span className="text-xs text-muted-foreground">
-                          {r.note}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">—</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {r.quantity}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">—</TableCell>
-                </TableRow>
-              ))}
-              {!hasActuals && order.bonuses.gifts.map((g, i) => (
-                <TableRow key={`gift-${i}`} className="text-muted-foreground">
-                  <TableCell>
-                    <div className="flex size-12 items-center justify-center rounded border bg-muted">
-                      <Gift className="size-4" aria-hidden="true" />
-                    </div>
-                  </TableCell>
-                  <TableCell className="max-w-md text-sm leading-snug whitespace-normal">
-                    {g.label}（プレゼント）
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">—</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {g.count}
-                    {g.unit ?? ""}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">—</TableCell>
-                </TableRow>
-              ))}
+              {/*
+                **おまけの行はここに足さない。** 以前は記録したおまけと予測を
+                この表の末尾に描き足していたが、すぐ下の「届いたおまけ」と
+                同じものが1ページに2回出て、何を買って何をもらったのか
+                読めなかった。この表は買ったものだけを持つ（下の
+                「N種 / 合計N点」も order.items だけを数えている）。
+                予測は ReceivedBonusSection の空の箱が出す。
+              */}
             </TableBody>
           </Table>
         </div>

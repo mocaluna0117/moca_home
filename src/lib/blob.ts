@@ -1,5 +1,6 @@
 import "server-only";
 
+import { MAX_BONUS_PHOTO_BYTES } from "@/lib/bonus-photos";
 import { MAX_ORDER_FILE_BYTES } from "@/lib/order-files";
 
 /**
@@ -110,8 +111,9 @@ export const PHOTO_RULES: Record<
   medicine: { types: ALLOWED_PHOTO_TYPES, maxBytes: 8 * 1024 * 1024 },
   // 上限は src/lib/order-files.ts が持つ（画面の文と同じ値を指すため）
   order: { types: ALLOWED_ORDER_FILE_TYPES, maxBytes: MAX_ORDER_FILE_BYTES },
-  // おまけは**写真だけ**。ALLOWED_ORDER_FILE_TYPES（PDF を含む）は使わない
-  bonus: { types: ALLOWED_PHOTO_TYPES, maxBytes: 8 * 1024 * 1024 },
+  // おまけは**写真だけ**。ALLOWED_ORDER_FILE_TYPES（PDF を含む）は使わない。
+  // 上限は src/lib/bonus-photos.ts が持つ（画面の文と同じ値を指すため）
+  bonus: { types: ALLOWED_PHOTO_TYPES, maxBytes: MAX_BONUS_PHOTO_BYTES },
 };
 
 /**
