@@ -13,7 +13,12 @@ export const dynamic = "force-dynamic";
  * 同一オリジンのこのルートが取得して返す（/api/medicine-photos/[id] と
  * 同じ形・同じヘッダー）。middleware の認証ゲートの内側にある。
  *
- * おまけの行は複数あるので id を受け取る。**必ず parseIdParam を通す** —
+ * `[id]` は**写真の id**（received_bonus_photos.id）。おまけの行の id では
+ * ない — 1つのおまけに複数枚あるので、行の id では1枚を指せない。
+ * 行は書き換わらない（付ける／外すだけ）ので `?v=` のキャッシュ破りは不要で、
+ * ETag（pathname のハッシュ）だけで「同じ id なら同じバイト列」が成り立つ。
+ *
+ * **必ず parseIdParam を通す** —
  * parseInt は "1.jpg" を 1 と読むので、素で Number 化すると拡張子付きの
  * URL で実体に届く経路ができる（過去に証明書がその形で未認証配信された。
  * src/lib/route-params.ts のコメント参照）。
@@ -27,12 +32,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const bonusId = parseIdParam(id);
-    if (bonusId === null) {
+    const photoId = parseIdParam(id);
+    if (photoId === null) {
       return NextResponse.json({ error: "不正なIDです" }, { status: 400 });
     }
 
-    const photo = await getReceivedBonusPhoto(bonusId);
+    const photo = await getReceivedBonusPhoto(photoId);
     if (!photo?.pathname) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }

@@ -18,6 +18,7 @@ import {
   orders,
   productFavorites,
   products,
+  receivedBonusPhotos,
   receivedBonuses,
   syncRuns,
   type Order,
@@ -34,19 +35,22 @@ export interface OrderItemWithBonus extends OrderItem {
 }
 
 /**
- * 表示用のおまけ1行。**写真の pathname は載せない** — Blob の削除キーなので、
- * クライアントに渡る形（このまま OrderCard とダイアログへ流れる）には
- * 「あるか」と「?v= の種」だけを置く（getMedicines と同じ畳み方）。
+ * おまけに付いた写真1枚の、**クライアントに渡してよい形**。
+ * pathname（Blob の削除キー）は載せない — 表示は id だけで足りる
+ * （/api/bonus-photos/[id]）。行は書き換わらないので ?v= も要らない。
  */
-export interface ReceivedBonusRow
-  extends Omit<
-    ReceivedBonus,
-    "photoPathname" | "photoContentType" | "photoSizeBytes"
-  > {
+export interface ReceivedBonusPhotoRef {
+  id: number;
+  width: number | null;
+  height: number | null;
+}
+
+/** 表示用のおまけ1行。このまま OrderCard とおまけのダイアログへ流れる。 */
+export interface ReceivedBonusRow extends ReceivedBonus {
   /** first products.image_urls entry when product_id is set */
   imageUrl: string | null;
-  /** おまけの写真があるか（実体は /api/bonus-photos/[id] が返す） */
-  hasPhoto: boolean;
+  /** 付いている写真（古い順）。0枚なら空配列 */
+  photos: ReceivedBonusPhotoRef[];
 }
 
 export interface OrderWithItems extends Order {
@@ -87,25 +91,43 @@ async function fetchReceivedByOrder(
     .where(orderId ? eq(receivedBonuses.orderId, orderId) : undefined)
     .orderBy(receivedBonuses.id)
     .all();
+  /*
+    写真は**もう1文**でまとめて引く（おまけの数だけクエリを撃たない。
+    queries-log.ts の getVaccinations と同じ形）。0件のときに撃たないのは、
+    inArray が空配列で不正な SQL になるためでもある。
+  */
+  const byBonus = new Map<number, ReceivedBonusPhotoRef[]>();
+  if (rows.length > 0) {
+    const photos = await db
+      .select({
+        id: receivedBonusPhotos.id,
+        bonusId: receivedBonusPhotos.bonusId,
+        width: receivedBonusPhotos.width,
+        height: receivedBonusPhotos.height,
+      })
+      .from(receivedBonusPhotos)
+      .where(
+        inArray(
+          receivedBonusPhotos.bonusId,
+          rows.map((r) => r.row.id),
+        ),
+      )
+      .orderBy(asc(receivedBonusPhotos.id))
+      .all();
+    for (const p of photos) {
+      const ref = { id: p.id, width: p.width, height: p.height };
+      const list = byBonus.get(p.bonusId);
+      if (list) list.push(ref);
+      else byBonus.set(p.bonusId, [ref]);
+    }
+  }
+
   const map = new Map<string, ReceivedBonusRow[]>();
   for (const r of rows) {
-    /*
-      **列を1つずつ書き写す。** `...r.row` を撒くと、写真の pathname や
-      あとから足した列がそのままクライアントへ運ばれる（この行は OrderCard と
-      おまけのダイアログに渡る）。ここに書いた列だけが外に出る。
-    */
     const entry: ReceivedBonusRow = {
-      id: r.row.id,
-      orderId: r.row.orderId,
-      productId: r.row.productId,
-      label: r.row.label,
-      quantity: r.row.quantity,
-      note: r.row.note,
-      photoUpdatedAt: r.row.photoUpdatedAt,
-      createdAt: r.row.createdAt,
-      updatedAt: r.row.updatedAt,
+      ...r.row,
       imageUrl: firstImage(r.productImages),
-      hasPhoto: r.row.photoPathname !== null,
+      photos: byBonus.get(r.row.id) ?? [],
     };
     const list = map.get(entry.orderId);
     if (list) list.push(entry);
@@ -424,14 +446,22 @@ export async function getFavorites(): Promise<FavoriteProduct[]> {
 export async function getOrder(id: string): Promise<OrderWithItems | null> {
   const order = await db.select().from(orders).where(eq(orders.id, id)).get();
   if (!order) return null;
-  const items = await db
-    .select()
-    .from(orderItems)
-    .where(eq(orderItems.orderId, id))
-    .all();
-  const received = (await fetchReceivedByOrder(id)).get(id) ?? [];
-  const fileCount = (await fetchFileCountByOrder()).get(id) ?? 0;
-  return withBonuses(order, items, received, fileCount);
+  /*
+    3つは互いに独立なので**同時に投げる**（直列にすると、DBが遠い環境で
+    1段ずつ往復が増える。おまけの写真を子テーブルにしてから、この経路の
+    段数がもう1つ増えたので、ここで畳んでおく）。
+  */
+  const [items, receivedByOrder, fileCounts] = await Promise.all([
+    db.select().from(orderItems).where(eq(orderItems.orderId, id)).all(),
+    fetchReceivedByOrder(id),
+    fetchFileCountByOrder(),
+  ]);
+  return withBonuses(
+    order,
+    items,
+    receivedByOrder.get(id) ?? [],
+    fileCounts.get(id) ?? 0,
+  );
 }
 
 export interface ProductDetail {
@@ -705,22 +735,21 @@ export async function getOrderFiles(orderId: string): Promise<OrderFileRow[]> {
 
 /** 添付1件の実体。/api/order-files/[id] だけが呼ぶ */
 /**
- * おまけの写真1枚。**url は返さない**（private ストアの URL は誰も直接
- * 開けない）。/api/bonus-photos/[id] だけが使う。
+ * おまけの写真1枚。**id は写真の id**（おまけの行の id ではない）。
+ * pathname を返すのはここだけで、/api/bonus-photos/[id] しか呼ばない。
  */
 export async function getReceivedBonusPhoto(
   id: number,
 ): Promise<{ pathname: string; contentType: string | null } | null> {
   const row = await db
     .select({
-      pathname: receivedBonuses.photoPathname,
-      contentType: receivedBonuses.photoContentType,
+      pathname: receivedBonusPhotos.pathname,
+      contentType: receivedBonusPhotos.contentType,
     })
-    .from(receivedBonuses)
-    .where(eq(receivedBonuses.id, id))
+    .from(receivedBonusPhotos)
+    .where(eq(receivedBonusPhotos.id, id))
     .get();
-  if (!row?.pathname) return null;
-  return { pathname: row.pathname, contentType: row.contentType };
+  return row?.pathname ? row : null;
 }
 
 export async function getOrderFile(
