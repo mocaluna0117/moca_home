@@ -1,23 +1,19 @@
 "use client";
 
-import { FileText, Loader2, Paperclip, Trash2, Upload } from "lucide-react";
+import { FileText, Paperclip, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { ImagePreview } from "@/components/image-preview";
+import { OrderFileUploadButton } from "@/components/order-file-upload-button";
 import { Button } from "@/components/ui/button";
-import {
-  attachOrderFile,
-  detachOrderFile,
-  discardUnattachedOrderFile,
-} from "@/lib/actions";
+import { detachOrderFile } from "@/lib/actions";
 import { callAction } from "@/lib/call-action";
 import {
   MAX_ORDER_FILES,
   formatFileSize,
   isImageContentType,
 } from "@/lib/order-files";
-import { PhotoConvertError, preparePhoto } from "@/lib/prepare-photo";
 import type { OrderFileRow } from "@/lib/queries";
 
 /**
@@ -40,91 +36,8 @@ export function OrderFilesSection({
   files: OrderFileRow[];
 }) {
   const [isPending, startTransition] = useTransition();
-  /** 上げている最中の割合。null なら何もしていない */
-  const [uploading, setUploading] = useState<number | null>(null);
   /** 表示に失敗した画像の id。壊れたサムネイルを出し続けない */
   const [failed, setFailed] = useState<number[]>([]);
-
-  const full = files.length >= MAX_ORDER_FILES;
-
-  function addFiles(list: FileList | null) {
-    const chosen = list ? Array.from(list) : [];
-    if (chosen.length === 0) return;
-    const room = MAX_ORDER_FILES - files.length;
-    if (room <= 0) {
-      toast.error(`添付は${MAX_ORDER_FILES}件までです`);
-      return;
-    }
-    const targets = chosen.slice(0, room);
-    if (targets.length < chosen.length) {
-      toast.error(`${chosen.length - targets.length}件は上限を超えるので見送りました`);
-    }
-
-    startTransition(async () => {
-      let failedCount = 0;
-      for (const file of targets) {
-        setUploading(0);
-        let uploaded: string | null = null;
-        try {
-          /*
-            写真だけブラウザで縮小する。PDF は canvas で扱えないので
-            そのまま上げる（prepare-photo.ts は画像専用）。
-          */
-          const prepared = file.type.startsWith("image/")
-            ? await preparePhoto(file, { maxEdge: 2000 })
-            : { body: file, contentType: file.type, width: null, height: null };
-
-          // Blob の SDK は押した瞬間に読み込む（初回JSに 120KB を乗せない）
-          const { upload } = await import("@vercel/blob/client");
-          const blob = await upload(`orders/${crypto.randomUUID()}`, prepared.body, {
-            // ストアは private（領収書には氏名・住所が載る）。閲覧は
-            // 同一オリジンの /api/order-files/[id] 経由で行う
-            access: "private",
-            contentType: prepared.contentType,
-            handleUploadUrl: "/api/blob/upload",
-            onUploadProgress: ({ percentage }) => setUploading(percentage),
-          });
-          uploaded = blob.pathname;
-
-          const res = await callAction(() =>
-            attachOrderFile({
-              orderId,
-              url: blob.url,
-              pathname: blob.pathname,
-              contentType: prepared.contentType,
-              sizeBytes: prepared.body.size,
-              fileName: file.name,
-              width: prepared.width,
-              height: prepared.height,
-            }),
-          );
-          if (!res.ok) {
-            failedCount++;
-            // Blob には載ったのに紐づけ先が無い状態を残さない
-            await callAction(() => discardUnattachedOrderFile(blob.pathname));
-            toast.error("添付に失敗しました", { description: res.error });
-          }
-        } catch (err) {
-          failedCount++;
-          if (uploaded) {
-            const orphan = uploaded;
-            await callAction(() => discardUnattachedOrderFile(orphan));
-          }
-          toast.error(
-            err instanceof PhotoConvertError
-              ? "この写真は変換できませんでした"
-              : "添付に失敗しました",
-            { description: "通信を確かめて、もう一度お試しください。" },
-          );
-        }
-      }
-      setUploading(null);
-      const added = targets.length - failedCount;
-      if (added > 0) {
-        toast.success(`${added}件を添付しました`);
-      }
-    });
-  }
 
   function remove(file: OrderFileRow) {
     startTransition(async () => {
@@ -146,32 +59,9 @@ export function OrderFilesSection({
             {files.length}件
           </span>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          {uploading !== null && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
-              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-              {Math.round(uploading)}%
-            </span>
-          )}
-          {/* label に input を隠して包む。ボタンの見た目のまま複数選択できる */}
-          <label className={full || isPending ? "pointer-events-none opacity-50" : ""}>
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              multiple
-              className="sr-only"
-              disabled={full || isPending}
-              onChange={(e) => {
-                addFiles(e.target.files);
-                // 同じファイルを続けて選べるように毎回リセットする
-                e.target.value = "";
-              }}
-            />
-            <span className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2.5 text-[0.8rem] font-medium transition-colors hover:bg-muted">
-              <Upload className="size-3.5" aria-hidden="true" />
-              ファイルを添付
-            </span>
-          </label>
+        <div className="ml-auto">
+          {/* 上げる処理は一覧のカードと共有している（同じ1つの経路） */}
+          <OrderFileUploadButton orderId={orderId} currentCount={files.length} />
         </div>
       </div>
 

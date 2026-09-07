@@ -6,6 +6,7 @@ import { FavoriteButton } from "@/components/favorite-button";
 import { ProductName } from "@/components/product-name";
 import { ImagePreview } from "@/components/image-preview";
 import { ImageWithFallback } from "@/components/image-with-fallback";
+import { OrderFileUploadButton } from "@/components/order-file-upload-button";
 import { ReceivedBonusDialog } from "@/components/received-bonus-dialog";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
@@ -241,8 +242,19 @@ export function OrderCard({
           ) : (
             <span />
           )}
-          {/* z-20 lifts the trigger above the card-wide link. */}
-          <span className="relative z-20 shrink-0">
+          {/*
+            z-20 lifts the trigger above the card-wide link.
+            添付とおまけは「この注文にあとから足すもの」なので同じ行に並べる。
+            添付は一覧からも足せるが、中身を見るのは詳細ページ（カードには
+            件数の印だけ出す — 一覧に一覧を入れ子にしない）。
+          */}
+          <span className="relative z-20 flex shrink-0 items-center gap-1">
+            <OrderFileUploadButton
+              orderId={order.id}
+              currentCount={order.fileCount}
+              label="添付"
+              variant="ghost"
+            />
             <ReceivedBonusDialog
               orderId={order.id}
               existing={existing}
