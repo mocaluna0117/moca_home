@@ -1,6 +1,5 @@
 "use client";
 
-import { upload } from "@vercel/blob/client";
 import { Camera, ImagePlus, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -147,12 +146,14 @@ export function ProfileDialog({
 
       let prepared: PreparedPhoto;
       try {
-        // 丸枠は最大128pxでしか出ないので 1200px で足りる。
+        // 丸枠は最大128pxでしか出ない。1200px は表示の9倍で、毎回その
+        // バイト列を運んでいた。384px（Retina で2倍を見込んで3倍）に落とす。
+        // **これから撮る写真だけ**に効く（保存済みの写真は変わらない）。
         // allowOriginalFallback: false は「変換できなかった原本を送らない」——
         // HEIC を <img> で描けないブラウザがあり、顔写真が出ないのは
         // 証明書のサムネイルが出ないのとは重みが違う
         prepared = await preparePhoto(pending.file, {
-          maxEdge: 1200,
+          maxEdge: 384,
           allowOriginalFallback: false,
         });
       } catch (err) {
@@ -170,6 +171,12 @@ export function ProfileDialog({
       setUploading(0);
       let uploaded: string | null = null;
       try {
+        /*
+          Blob の SDK は**押した瞬間に**読み込む。静的 import にすると
+          120KB（brotli で約30KB）がこの画面の初回JSに常に乗り、
+          写真を一度も触らない日でも運ぶことになる。
+        */
+        const { upload } = await import("@vercel/blob/client");
         const blob = await upload(`profile/${crypto.randomUUID()}.jpg`, prepared.body, {
           // ストアは private。表示は同一オリジンの /api/dog-photo 経由で、
           // Blob の URL は誰も直接開けない（列にも保存しない）

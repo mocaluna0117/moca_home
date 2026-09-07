@@ -64,6 +64,11 @@ export function MedicineSection({
                   <img
                     src={`/api/medicine-photos/${m.id}?v=${encodeURIComponent(m.photoUpdatedAt ?? "")}`}
                     alt=""
+                    // 一覧に N 枚並ぶ。実寸を書いて枠を確保し、画面外は取りに行かない
+                    width={40}
+                    height={40}
+                    loading="lazy"
+                    decoding="async"
                     className="size-10 rounded-md border object-contain"
                   />
                 </ImagePreview>

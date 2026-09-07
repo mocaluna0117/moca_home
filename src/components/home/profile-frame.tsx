@@ -86,6 +86,13 @@ export function ProfileFrame({
               src={src}
               // ボタンの aria-label が名前を持っているので alt は空にする
               alt=""
+              // 実寸を書く。ページで最初に目に入る1枚なので、ブラウザに
+              // 枠を先に確保させ、取得の優先度も上げる（既定だと
+              // レイアウトが済むまで低優先のまま待たされる）
+              width={128}
+              height={128}
+              decoding="async"
+              fetchPriority="high"
               onError={() => setFailedSrc(src)}
               className="size-full rounded-full bg-muted object-cover"
             />

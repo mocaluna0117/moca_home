@@ -1,6 +1,5 @@
 "use client";
 
-import { upload } from "@vercel/blob/client";
 import { Camera, ImagePlus, Sparkles, Syringe, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -311,6 +310,12 @@ export function VaccinationDialog({
         let uploaded: { pathname: string } | null = null;
         try {
           const { body, contentType, width, height } = await preparePhoto(item.file);
+          /*
+            Blob の SDK は**押した瞬間に**読み込む。静的 import にすると
+            120KB（brotli で約30KB）がこの画面の初回JSに常に乗り、
+            写真を一度も触らない日でも運ぶことになる。
+          */
+          const { upload } = await import("@vercel/blob/client");
           const blob = await upload(`vaccinations/${crypto.randomUUID()}.jpg`, body, {
             // ストアは private（証明書に氏名・住所が写るため）。閲覧は
             // 同一オリジンの /api/vaccination-photos/[id] 経由で行う。

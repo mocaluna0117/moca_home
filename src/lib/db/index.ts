@@ -37,7 +37,10 @@ if (isFileUrl) {
   fs.mkdirSync(path.dirname(url.slice("file:".length)), { recursive: true });
 }
 
-// Reuse the connection across dev hot-reloads and warm serverless invocations.
+// Reuse the connection across dev hot-reloads. **Dev only** — the guard below
+// is NODE_ENV-gated, so in production nothing is written to globalThis.
+// That is fine: the module-level `const client` already lives as long as the
+// warm isolate does, and the libsql transport here is stateless HTTP.
 const globalForDb = globalThis as unknown as { __libsql?: Client };
 
 const client =

@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import "server-only";
 
 import { and, desc, eq, inArray, like, sql } from "drizzle-orm";
@@ -128,7 +130,7 @@ export async function getOrders(q?: string): Promise<OrderWithItems[]> {
 }
 
 /** 星がついている商品ID。数行なので毎回引いてよい。 */
-export async function getFavoriteProductIds(): Promise<Set<number>> {
+async function _getFavoriteProductIds(): Promise<Set<number>> {
   const rows = await db
     .select({ productId: productFavorites.productId })
     .from(productFavorites)
@@ -136,6 +138,9 @@ export async function getFavoriteProductIds(): Promise<Set<number>> {
     .all();
   return new Set(rows.map((r) => r.productId));
 }
+
+/** /orders?view=products では page と getProductSummaries の両方が呼ぶ */
+export const getFavoriteProductIds = cache(_getFavoriteProductIds);
 
 export interface ProductSummary {
   /** products.id when the site linked one, else null */
@@ -530,7 +535,7 @@ export async function getCatalogProduct(
  * （orders.total_yen が null）は 0 円として合計に入る。ホームでも出続ける
  * 数字だが、直すのは購入履歴側の別の決定なので今回は触らない。
  */
-export async function getStats() {
+async function _getStats() {
   const row = await db.get<{
     orderCount: number;
     itemCount: number;
@@ -548,7 +553,15 @@ export async function getStats() {
   };
 }
 
-export async function getLastSync() {
+/**
+ * 1リクエスト内で何度呼んでも1文で済ませる。layout.tsx と
+ * getHomeSnapshot（ホーム）/ orders/page.tsx が同じものを別々に呼んでおり、
+ * それぞれ往復が乗っていた。React の cache は**そのレンダー1回**の中でだけ
+ * 効き、リクエストを跨いでは残らないので、鮮度は1文字も変わらない。
+ */
+export const getStats = cache(_getStats);
+
+async function _getLastSync() {
   return (
     (await db
       .select()
@@ -559,8 +572,11 @@ export async function getLastSync() {
   );
 }
 
+/** layout.tsx と getHomeSnapshot が同じものを呼ぶ（getStats と同じ理由） */
+export const getLastSync = cache(_getLastSync);
+
 /** Latest catalog sweep (any terminal status) + current catalog size. */
-export async function getCatalogState() {
+async function _getCatalogState() {
   const lastRun =
     (await db
       .select()
@@ -578,6 +594,9 @@ export async function getCatalogState() {
     )?.n ?? 0;
   return { count, lastSweptAt: lastRun?.finishedAt ?? null };
 }
+
+/** layout.tsx（ローカルのみ）と /orders・/orders/[id] が呼ぶ */
+export const getCatalogState = cache(_getCatalogState);
 
 /**
  * 1商品の「短い名前」。商品ページが登録ダイアログの初期値に使う。
