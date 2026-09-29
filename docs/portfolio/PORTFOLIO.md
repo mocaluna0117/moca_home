@@ -7,7 +7,8 @@
 | 氏名 | 木村 大暉 |
 | 区分 | 個人開発（Webアプリケーション／自分で日常的に使用） |
 | ソースコード | https://github.com/mocaluna0117/moca_home |
-| 動作紹介動画 | https://github.com/mocaluna0117/moca_home/blob/main/docs/portfolio/moca-home-demo.mp4（約2分50秒） |
+| 実行ファイル（bin） | なし（Webアプリのため exe は無い）。動画と「8. 動作確認方法」のローカルでの起動手順で確認できる |
+| 動作紹介動画 | <https://github.com/mocaluna0117/moca_home/blob/main/docs/portfolio/moca-home-demo.mp4>（約2分50秒） |
 | 本番環境 | 購入履歴や証明書の写真を含むためパスワード保護で非公開（動画と下記の手順で確認いただけます） |
 
 > 本資料の画面写真と動画は、手元に別に立てたデモ環境で、**すべて架空のデータ**（架空の商品・架空の接種証明書・犬のイラスト）を使って撮影した。アプリのコードは本番と同一である。
@@ -42,6 +43,7 @@
 | **自身の担当範囲** | 全工程。欲しい機能の洗い出し、画面とデータの設計、実装、Vercel・Turso への構築、本番データの移行、自分での日常利用と改善 |
 | **動作環境** | モダンブラウザ（Chrome / Edge / Safari）。PC・スマートフォン両対応。サーバは Vercel（東京リージョン）、DB は Turso |
 | **操作方法** | パスワードでログインし、上部のタブ（ホーム・購入履歴・カレンダー・ごはん・トリミング・通院・フィラリア・薬・接種記録・お気に入り）で画面を切り替える。記録は各画面の「記録」ボタンから入れる。購入履歴は右上の「同期」ボタンで通販サイトから取り込む（詳しくは「4. 主な機能」と動画） |
+| **制作意図** | 1章のとおり。散らばっていた愛犬の記録と購入履歴を1か所にまとめ、入力の手間を減らし、個人情報を不用意に残さない・送らない |
 | **規模** | TypeScript 約25,500行（テストを除く。うち UI 部品の生成コード 約700行）＋ テスト 約3,400行・394件。画面13・DBテーブル20。コミット62件（本資料を追加したコミットを除く） |
 | **扱っているデータ（本番）** | 注文69件・明細129件、通販サイトの商品カタログ1,120件（いずれも開発時点のコミットに記録された件数） |
 
@@ -49,16 +51,18 @@
 
 ## 3. 技術スタックとアーキテクチャ
 
+版は package-lock.json に固定されているものである。
+
 | レイヤ | 技術 |
 |---|---|
-| フロントエンド / サーバ | **Next.js 16（App Router）**, React 19, TypeScript。読み取りは Server Components が DB を直接読み、書き込みは Server Actions |
-| UI | Tailwind CSS v4, shadcn/ui（Base UI） |
-| DB | **SQLite 互換の libSQL**（本番は Turso、ローカルは SQLite のファイル）＋ Drizzle ORM |
-| 写真・PDF | Vercel Blob（private）。ブラウザから直接アップロード |
-| 通販サイトの取り込み | fetch + cheerio（ヘッドレスブラウザを使わない HTML 解析） |
-| AI | 接種証明書の読み取りに Gemini API（未設定なら Claude API） |
-| 定期実行・通知 | Vercel Cron（毎朝1回）, nodemailer + Gmail |
-| テスト | node:test（tsx で実行） |
+| フロントエンド / サーバ | **Next.js 16.3.3（App Router）**, React 19.2.8, TypeScript 5.9.3。読み取りは Server Components が DB を直接読み、書き込みは Server Actions |
+| UI | Tailwind CSS 4.3.3, shadcn/ui 4.19.0（Base UI 1.7.0） |
+| DB | **SQLite 互換の libSQL**（@libsql/client 0.17.4。本番は Turso、ローカルは SQLite のファイル）＋ Drizzle ORM 0.45.2 |
+| 写真・PDF | Vercel Blob（@vercel/blob 2.8.0・private）。ブラウザから直接アップロード |
+| 通販サイトの取り込み | fetch + cheerio 1.2.0（ヘッドレスブラウザを使わない HTML 解析） |
+| AI | 接種証明書の読み取りに Gemini API（@google/genai 2.19.0、既定のモデルは gemini-2.5-flash）。未設定なら Claude API（@anthropic-ai/sdk 0.122.0） |
+| 定期実行・通知 | Vercel Cron（毎朝1回）, nodemailer 9.0.6 + Gmail |
+| テスト | node:test（tsx 4.23.12 で実行） |
 | インフラ | Vercel（Hobby プラン・東京 hnd1）, Turso（東京） |
 
 ### アーキテクチャ
@@ -225,19 +229,19 @@ Webアプリでありゲームとは領域が異なるが、以下はゲーム�
 
 ### ローカルで動かす
 
-本番は非公開のため、ローカルで起動する手順を示す。通販サイトの認証情報や AI・写真の設定が無くても、記録の入力と画面の操作は一通り試せる（写真と証明書の読み取りの欄が出なくなる）。
+Webアプリのため、Windows の実行ファイル（exe）は用意していない。本番は非公開なので、ローカルで起動する手順を示す。通販サイトの認証情報や AI・写真の設定が無くても、記録の入力と画面の操作は一通り試せる（写真と証明書の読み取りの欄が出なくなる）。
 
 ```bash
 # 前提: Node.js 20.9 以上
 npm install
 cp .env.example .env.local
-sed -i '' '/^TURSO_AUTH_TOKEN=$/d' .env.local   # 空の行があると次のコマンドが止まるため（macOS の sed）
-npm run db:push        # 空の SQLite（data/app.db）に20テーブルを作る
-npm run dev            # http://localhost:3000
-npm test               # 394件のテスト
+sed -i '' '/^TURSO_AUTH_TOKEN=$/d' .env.local  # 空の行を消す
+npm run db:push     # 空の SQLite に20テーブルを作る
+npm run dev         # http://localhost:3000
+npm test            # 394件のテスト
 ```
 
-`APP_PASSWORD` を設定しなければログイン画面は出ない。各設定の詳細はリポジトリの `README.md` と `DEPLOY.md` に記載している。
+`sed` の行は、`.env.local` に空の `TURSO_AUTH_TOKEN=` の行があると `npm run db:push` が止まるため、その行を消している（macOS の `sed` の書き方）。`APP_PASSWORD` を設定しなければログイン画面は出ない。各設定の詳細はリポジトリの `README.md` と `DEPLOY.md` に記載している。
 
 ---
 
