@@ -1,9 +1,14 @@
 # もかのほーむ
 
 [20and20.pet/store](https://20and20.pet/store/) (EC-CUBE) の**自分の購入履歴**を取得し、
-一覧・検索・詳細で閲覧するローカル専用アプリ。
-もかの毎日(ごはん・ワクチン・フィラリア・トリミング)の記録も同じアプリに入っており、
+一覧・検索・詳細で閲覧する Web アプリ。
+もかの毎日(ごはん・ワクチン・フィラリア・トリミング・通院)の記録も同じアプリに入っており、
 トップページ `/` はその日のもかを見せる**ホーム**、購入履歴は `/orders` にある。
+本番は Vercel + Turso で動かしており、購入履歴や証明書の写真を含むため、
+パスワード(`APP_PASSWORD`)で保護して自分だけが使っている。
+
+> 作品説明資料と動作紹介動画は [docs/portfolio/](docs/portfolio/) にある（[PORTFOLIO.md](docs/portfolio/PORTFOLIO.md) ／ [moca-home-demo.mp4](docs/portfolio/moca-home-demo.mp4)）。
+> 画面写真と動画は、デモ環境ですべて架空のデータを使って撮影した。
 
 ## セットアップ
 
