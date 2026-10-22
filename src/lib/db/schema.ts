@@ -712,7 +712,8 @@ export const medicines = sqliteTable(
  * リマインドの判定（未実施かつ未送信）が1行で完結しなくなる。
  *
  * - reminded_at : **送る前に**埋めて予約する。cron が二重に走っても
- *   同じメールを2通送らないため。
+ *   同じメールを2通送らないため。書く値は実行ごとに違う印
+ *   （時刻＋実行ID。src/lib/reminder-run.ts の reminderMark）。
  *   ただし送信が失敗したら **戻す**（remind_error に理由を残す）。
  *   戻さないと「送ったことになっているのに届いていない」日が黙って生まれる。
  * - scheduled_date は一意（heartworm_doses_scheduled_date_idx）。
@@ -743,7 +744,11 @@ export const heartwormDoses = sqliteTable(
     /** 薬の名前（スナップショット）。例 "モキシデック チュアブル" */
     label: text("label"),
     note: text("note"),
-    /** リマインドを送った時刻（+09:00 付き ISO）。null なら未送信 */
+    /**
+     * リマインドの予約の印。null なら未送信。
+     * 先頭は送った時刻（+09:00 付き ISO）で、後ろに実行ごとの ID が付く
+     * （"2026-08-31T08:00:00+09:00#<uuid>"）。ID を付ける前に送った行は時刻だけ
+     */
     remindedAt: text("reminded_at"),
     /** 直近の送信失敗の理由。成功したら null に戻す */
     remindError: text("remind_error").$type<RemindError>(),

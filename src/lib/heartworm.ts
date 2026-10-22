@@ -110,7 +110,7 @@ export interface DoseRow {
   scheduledDate: DateStr;
   /** 実際に飲ませた日。null なら未実施 */
   givenDate: DateStr | null;
-  /** リマインドを送った時刻（ISO）。null なら未送信 */
+  /** リマインドの予約の印（先頭が送った時刻の ISO）。null なら未送信 */
   remindedAt: string | null;
 }
 

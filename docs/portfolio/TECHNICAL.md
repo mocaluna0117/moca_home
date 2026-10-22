@@ -395,15 +395,14 @@ Turso は SQL 1文ごとに往復が乗るので、関数と DB の距離がそ�
 
 ### 9.3 二重に送らない通知
 
-[`runHeartwormReminder`](https://github.com/mocaluna0117/moca_home/blob/main/src/lib/reminder.ts) は次の順で動く。
+[`runHeartwormReminder`](https://github.com/mocaluna0117/moca_home/blob/main/src/lib/reminder.ts) は次の順で動く（手順の本体は [`runReminder`](https://github.com/mocaluna0117/moca_home/blob/main/src/lib/reminder-run.ts)）。
 
 1. 候補を引き、[`selectDosesToRemind`](https://github.com/mocaluna0117/moca_home/blob/main/src/lib/heartworm.ts) で「未投薬・未送信・予定日が今日以前・7日前（`REMIND_LOOKBACK_DAYS`）以降」に絞る。cron が止まっていた日も取り戻すが、遡りすぎない
-2. **送る前に** `UPDATE … SET reminded_at = stamp WHERE id IN (…) AND reminded_at IS NULL` で予約する
-3. `reminded_at = stamp` の行だけを送る
-4. 失敗が一時的なもの（`network`）なら5秒後に1回だけ再送し、それでも失敗したら予約を `null` に戻して理由を `remind_error` に残す
+2. **送る前に** `UPDATE … SET reminded_at = mark WHERE id IN (…) AND reminded_at IS NULL` で予約する。`mark` は実行ごとに違う印で、`nowJstIso()` の時刻の後ろに `randomUUID()` の実行 ID を付けたもの（例 `2026-08-31T08:00:00+09:00#3b241101-…`）
+3. `reminded_at = mark` の行だけを送る
+4. 失敗が一時的なもの（`network`）なら5秒後に1回だけ再送し、それでも失敗したら `reminded_at = mark` の行だけ予約を `null` に戻して理由を `remind_error` に残す
 
-> [!NOTE]
-> 2 の条件付き UPDATE により、同じ行を予約できるのは1回の実行だけである。3 の照合に使う `stamp` は `nowJstIso()` の値で秒単位までなので、別々の秒に始まった実行は確実に区別できる（同じ秒に2本が始まった場合は区別できない）。
+2 の条件付き UPDATE により、同じ行を予約できるのは1回の実行だけである。3 と 4 は自分の印で行を選ぶので、2本が同じ秒に始まっても（cron の再試行と手動の呼び出しが重なった場合など）、相手が予約した行を送ることも、相手が送った行の予約を戻すこともない。以前は時刻だけ（`nowJstIso()` は秒まで）を印にしていたため、同じ秒に始まった2本では印が一致し、どちらも同じメールを送ってしまう穴があった。`reminded_at` を読む側は NULL かどうかしか見ないので、値の形を変えても他に影響はない（先頭は時刻のまま残している）。[`reminder-run.test.ts`](https://github.com/mocaluna0117/moca_home/blob/main/src/lib/reminder-run.test.ts) は時刻を止めて2本を同時に走らせ、送られるのが1通だけであることと、送信に失敗した実行が自分の予約だけを戻すことを確かめている。
 
 送信は nodemailer で Gmail の SMTP（既定465番）へ送り、接続10秒・挨拶10秒・ソケット20秒で必ず諦める（[mail.ts](https://github.com/mocaluna0117/moca_home/blob/main/src/lib/mail.ts)）。
 
